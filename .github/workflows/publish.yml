@@ -44,7 +44,7 @@ jobs:
         run: npm publish --provenance --access public -w packages/${{ steps.meta.outputs.pkg_dir }}
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: ${{ steps.meta.outputs.tag }}
           tag_name: ${{ steps.meta.outputs.tag }}

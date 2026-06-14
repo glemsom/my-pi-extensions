@@ -34,8 +34,7 @@ jobs:
 
       - name: Bump version in package.json
         run: |
-          cd packages/${{ steps.meta.outputs.pkg_dir }}
-          npm version ${{ steps.meta.outputs.version }} --no-git-tag-version
+          npm pkg set version=${{ steps.meta.outputs.version }} -w packages/${{ steps.meta.outputs.pkg_dir }}
 
       - name: Install dependencies
         run: npm install --workspaces=false

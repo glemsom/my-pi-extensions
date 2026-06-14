@@ -1,6 +1,8 @@
 # Custom npm prefix for Pi and extensions
 
-> Imported from [pi-box](https://github.com/glemsom/pi-box) (archived) — `tools/pi-box/`.
+**Scope**: pi-box (`tools/pi-box/`)
+
+> Imported from [pi-box](https://github.com/glemsom/pi-box) (archived).
 
 Devbox's Nix store is immutable, so `npm install --global` fails inside a devbox shell. The recommended workaround (`nodePackages.*` in devbox.json) requires packages to exist in nixpkgs. Pi (`@earendil-works/pi-coding-agent`) and its extensions (`@dreki-gg/pi-context7`) are npm packages not packaged in nixpkgs.
 

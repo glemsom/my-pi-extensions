@@ -1,5 +1,7 @@
 # Tag-based publishing
 
+**Scope**: Pi packages (`packages/`)
+
 We publish pi packages by pushing git tags of the form `@glemsom/<pkg>@<version>`. CI matches the tag, extracts the package name, writes the version into `package.json`, and runs `npm publish -w packages/<pkg>`.
 
 **Why not changesets?** Changesets would give us automated changelogs and version bumps, but for a handful of independently small packages the overhead — bot setup, PR workflow, `.changeset/` directory — outweighs the benefit. Tags are a single `git tag && git push` with no bot dependency.

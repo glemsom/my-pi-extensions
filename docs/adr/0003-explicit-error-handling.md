@@ -1,6 +1,8 @@
 # Explicit error handling over `set -e` and `set -o pipefail`
 
-> Imported from [pi-box](https://github.com/glemsom/pi-box) (archived) — `tools/pi-box/`.
+**Scope**: pi-box (`tools/pi-box/`)
+
+> Imported from [pi-box](https://github.com/glemsom/pi-box) (archived).
 
 Shell scripts in pi-box use `set -u` only. `set -e` and `set -o pipefail` are deliberately omitted. Every command whose failure matters gets explicit `|| { ...; exit N; }` handling, and dependencies are checked at the top of each script.
 

@@ -1,5 +1,8 @@
 # pi-box
 
+> **Part of [my-pi-extensions](https://github.com/glemsom/my-pi-extensions) monorepo** — `tools/pi-box/`.
+> The standalone [pi-box](https://github.com/glemsom/pi-box) repo is archived.
+
 Isolated, reproducible Pi agent environment using [devbox](https://www.jetify.com/devbox). The only host dependency is devbox itself — Pi runs inside the environment, never on the host.
 
 ## Prerequisites
@@ -8,11 +11,11 @@ Isolated, reproducible Pi agent environment using [devbox](https://www.jetify.co
 
 ## Setup
 
-Clone the repo and run the setup script:
+Clone the monorepo and run the setup script from `tools/pi-box/`:
 
 ```bash
-git clone https://github.com/glemsom/pi-box.git
-cd pi-box
+git clone https://github.com/glemsom/my-pi-extensions.git
+cd my-pi-extensions/tools/pi-box
 ./setup.sh
 ```
 
@@ -21,7 +24,7 @@ cd pi-box
 After setup, add the `pi-box` command to your shell by sourcing the function file in your `~/.bashrc`:
 
 ```bash
-source /path/to/pi-box/pi-box.sh
+source /path/to/my-pi-extensions/tools/pi-box/pi-box.sh
 ```
 
 Alternatively, copy the function below into your `~/.bashrc`:

@@ -9,8 +9,30 @@ Anything published to npm. Lives in `packages/`. Can be a pi extension, skill bu
 _Avoid_: Extension (too narrow — packages can be more than extensions)
 
 **Tool**:
-A local script or utility related to pi that is NOT published to npm. Lives in `tools/`.
+A local script or utility related to pi that is NOT published to npm. Lives in `tools/`. One tool per subdirectory.
 _Avoid_: Script, helper
+
+### pi-box (tool: `tools/pi-box/`)
+
+**pi-box**:
+The project and the user-facing command that enters the Pi dev environment via devbox.
+_Avoid_: pi-in-a-box, pibox
+
+**Base box**:
+The machine-wide global devbox configuration (`~/.local/share/devbox/global/default/devbox.json`) that provides `nodejs`, Pi, and default extensions. Managed by `setup.sh` and shared across all projects.
+_Avoid_: global config, default box
+
+**Project box**:
+A per-repository `devbox.json` that optionally extends the base box with additional project-specific packages. When `pi-box` is run in a directory with a `devbox.json`, it layers on top of the base box.
+_Avoid_: local config, repo devbox
+
+**setup.sh**:
+The idempotent setup script in `tools/pi-box/`. Edits the global devbox config to declare the base box packages, env vars, and init hooks. Does not install packages — deferred to first run.
+_Avoid_: install.sh, bootstrap
+
+**_die**:
+Shell function that prints an error message to stderr (prefixed with `Error: `) and returns exit code 1. Used by all failure paths in `pi-box.sh` for consistent, human-readable error output.
+_Avoid_: _fail, _fatal, _error_handler
 
 **Pi extension**:
 A TypeScript module using `ExtensionAPI` (`@earendil-works/pi-coding-agent`) that registers tools, commands, hooks, etc. A pi extension is one kind of pi package.

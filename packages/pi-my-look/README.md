@@ -3,9 +3,7 @@
 Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent).
 
 - 🎨 Branded splash on session start (typewriter reveal + fade-out)
-- 🔍📝✏️⚡ Tool icons inline in chat for read, write, edit, bash
-- 🔧 Generic catch-all icon for custom tools in the status bar
-- ⚡ Live status pulse: thinking… · ✓ done · ✗ error
+- 🔍📝✏️⚡ Tool icons inline in chat for read, write, edit, bash — single-line display with stats (e.g. `✏️ edit /path · +3 / -16`), no duplicate icons
 - ● Custom dot-pulse working indicator
 
 ## Install

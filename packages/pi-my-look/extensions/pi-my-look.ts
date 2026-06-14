@@ -2,12 +2,8 @@
  * pi-my-look — Modern UI polish for pi
  *
  * Slick modern UI polish for the pi coding agent:
- *   - Branded splash on session start (ephemeral widget + welcome notify)
- *   - Persistent compact brand widget above editor
+ *   - Branded splash on session start (typewriter reveal + fade-out)
  *   - Tool icons (🔍 read · 📝 write · ✏️ edit · ⚡ bash) inline in chat
- *   - Generic 🔧 catch-all icon for custom tools via status bar
- *   - Live status pulse: ⚡ thinking… · ✓ done · ✗ error
- *   - Custom working indicator (dot pulse)
  *
  * Install: pi install npm:@glemsom/pi-my-look
  *
@@ -37,8 +33,7 @@ const ICONS = {
   bash: "⚡",
 } as const;
 
-const ICON_DEFAULT = "🔧";
-const TAGLINE = "modern ui";
+const TAGLINE = "pi-my-look";
 
 // Splash ANSI gradient color stops (top → bottom).
 // DimLevel shrinks each channel for fade-out transitions.
@@ -83,7 +78,6 @@ function buildSplashLines(tagline: string, dimLevel: number, cursor: boolean): s
 const BRAND_WIDGET: string[] = [];
 
 const WIDGET_KEY = "pi-modern-brand";
-const STATUS_KEY = "pi-modern-tools";
 const SPLASH_DURATION_MS = 2500;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,7 +88,6 @@ export default function (pi: ExtensionAPI) {
   const cwd = process.cwd();
 
   // State
-  let currentTool: { name: string; icon: string } | null = null;
   let splashTimer: ReturnType<typeof setTimeout> | null = null;
   let splashActive = false;
 
@@ -181,23 +174,10 @@ export default function (pi: ExtensionAPI) {
     dismissSplash(ctx);
   });
 
-  // ─── WORKING INDICATOR: custom dot pulse ─────────────────────────────────
-
-  pi.on("session_start", async (_event, ctx) => {
-    const theme = ctx.ui.theme;
-    ctx.ui.setWorkingIndicator({
-      frames: [
-        theme.fg("dim", "·"),
-        theme.fg("muted", "•"),
-        theme.fg("accent", "●"),
-        theme.fg("accent", "◉"),
-        theme.fg("muted", "•"),
-      ],
-      intervalMs: 90,
-    });
-  });
-
   // ─── TOOL ICONS: override 4 built-ins ─────────────────────────────────────
+
+  // Invisible placeholder returned by renderResult when nothing to show.
+  const EMPTY: { render: () => string[]; invalidate: () => void } = { render: () => [], invalidate: () => {} };
 
   // Read: 🔍
   const originalRead = createReadTool(cwd);
@@ -209,35 +189,51 @@ export default function (pi: ExtensionAPI) {
     async execute(toolCallId, params, signal, onUpdate) {
       return originalRead.execute(toolCallId, params, signal, onUpdate);
     },
-    renderCall(args, theme) {
-      const text =
+    renderCall(args, theme, context) {
+      const prefix =
         theme.fg("toolTitle", theme.bold(`${ICONS.read} read `)) +
         theme.fg("accent", args.path);
-      return new Text(text, 0, 0);
+      const stats = context.state._stats as string | undefined;
+      return new Text(stats ? prefix + theme.fg("dim", ` · ${stats}`) : prefix + theme.fg("dim", " …"), 0, 0);
     },
-    renderResult(result, { expanded, isPartial }, theme) {
-      if (isPartial) return new Text(theme.fg("warning", `${ICONS.read} reading…`), 0, 0);
+    renderResult(result, { expanded, isPartial }, theme, context) {
+      if (isPartial) return EMPTY;
+
       const details = result.details as ReadToolDetails | undefined;
       const content = result.content[0];
+
+      // Compute stats for the single-line call display
       if (content?.type === "image") {
-        return new Text(theme.fg("success", `${ICONS.read} image loaded`), 0, 0);
+        context.state._stats = "image loaded";
+      } else if (content?.type !== "text") {
+        context.state._stats = "no content";
+      } else {
+        const allLines = content.text.split("\n");
+        let s = `${allLines.length} lines`;
+        if (details?.truncation?.truncated) s += ` (truncated from ${details.truncation.totalLines})`;
+        context.state._stats = s;
       }
-      if (content?.type !== "text") {
-        return new Text(theme.fg("error", `${ICONS.read} no content`), 0, 0);
+
+      if (!context.state._statsShown) {
+        context.state._statsShown = true;
+        queueMicrotask(() => context.invalidate());
       }
-      const allLines = content.text.split("\n");
-      const lineCount = allLines.length;
-      let text = theme.fg("success", `${ICONS.read} ${lineCount} lines`);
-      if (details?.truncation?.truncated) {
-        text += theme.fg("warning", ` (truncated from ${details.truncation.totalLines})`);
+
+      // Expanded: content preview (no emoji, call line already has it)
+      if (expanded && content?.type === "text") {
+        const allLines = content.text.split("\n");
+        const lineCount = allLines.length;
+        const previewLines = 15;
+        const lines = allLines.slice(0, previewLines);
+        let text = "";
+        for (const line of lines) text += `\n${theme.fg("dim", line)}`;
+        if (lineCount > previewLines) {
+          text += `\n${theme.fg("muted", `… ${lineCount - previewLines} more`)}`;
+        }
+        return new Text(text, 0, 0);
       }
-      const previewLines = expanded ? 15 : 5;
-      const lines = allLines.slice(0, previewLines);
-      for (const line of lines) text += `\n${theme.fg("dim", line)}`;
-      if (lineCount > previewLines) {
-        text += `\n${theme.fg("muted", `… ${lineCount - previewLines} more`)}`;
-      }
-      return new Text(text, 0, 0);
+
+      return EMPTY;
     },
   });
 
@@ -251,30 +247,44 @@ export default function (pi: ExtensionAPI) {
     async execute(toolCallId, params, signal, onUpdate) {
       return originalWrite.execute(toolCallId, params, signal, onUpdate);
     },
-    renderCall(args, theme) {
+    renderCall(args, theme, context) {
       const lineCount = args.content.split("\n").length;
-      const text =
+      const prefix =
         theme.fg("toolTitle", theme.bold(`${ICONS.write} write `)) +
         theme.fg("accent", args.path) +
         theme.fg("dim", ` (${lineCount} lines)`);
-      return new Text(text, 0, 0);
+      const stats = context.state._stats as string | undefined;
+      return new Text(stats ? prefix + theme.fg("dim", ` · ${stats}`) : prefix + theme.fg("dim", " …"), 0, 0);
     },
-    renderResult(result, { expanded, isPartial }, theme) {
-      if (isPartial) return new Text(theme.fg("warning", `${ICONS.write} writing…`), 0, 0);
+    renderResult(result, { expanded, isPartial }, theme, context) {
+      if (isPartial) return EMPTY;
+
       const content = result.content[0];
       if (content?.type === "text" && content.text.startsWith("Error")) {
-        return new Text(theme.fg("error", `${ICONS.write} ${content.text.split("\n")[0]}`), 0, 0);
+        context.state._stats = content.text.split("\n")[0];
+      } else {
+        context.state._stats = "written";
       }
-      let text = theme.fg("success", `${ICONS.write} written`);
-      if (expanded) {
-        const allLines = content?.type === "text" ? content.text.split("\n") : [];
-        const previewLines = allLines.slice(0, 15);
-        for (const line of previewLines) text += `\n${theme.fg("dim", line)}`;
-        if (allLines.length > 15) {
-          text += `\n${theme.fg("muted", `… ${allLines.length - 15} more`)}`;
+
+      if (!context.state._statsShown) {
+        context.state._statsShown = true;
+        queueMicrotask(() => context.invalidate());
+      }
+
+      // Expanded: content preview (no emoji)
+      if (expanded && content?.type === "text" && !content.text.startsWith("Error")) {
+        const allLines = content.text.split("\n");
+        const previewLines = 15;
+        const lines = allLines.slice(0, previewLines);
+        let text = "";
+        for (const line of lines) text += `\n${theme.fg("dim", line)}`;
+        if (allLines.length > previewLines) {
+          text += `\n${theme.fg("muted", `… ${allLines.length - previewLines} more`)}`;
         }
+        return new Text(text, 0, 0);
       }
-      return new Text(text, 0, 0);
+
+      return EMPTY;
     },
   });
 
@@ -289,46 +299,61 @@ export default function (pi: ExtensionAPI) {
     async execute(toolCallId, params, signal, onUpdate) {
       return originalEdit.execute(toolCallId, params, signal, onUpdate);
     },
-    renderCall(args, theme) {
-      const text =
+    renderCall(args, theme, context) {
+      const prefix =
         theme.fg("toolTitle", theme.bold(`${ICONS.edit} edit `)) +
         theme.fg("accent", args.path);
-      return new Text(text, 0, 0);
+      const stats = context.state._stats as string | undefined;
+      return new Text(stats ? prefix + theme.fg("dim", ` · ${stats}`) : prefix + theme.fg("dim", " …"), 0, 0);
     },
-    renderResult(result, { expanded, isPartial }, theme) {
-      if (isPartial) return new Text(theme.fg("warning", `${ICONS.edit} editing…`), 0, 0);
+    renderResult(result, { expanded, isPartial }, theme, context) {
+      if (isPartial) return EMPTY;
+
       const details = result.details as EditToolDetails | undefined;
       const content = result.content[0];
+
+      // Compute stats for single-line call display
       if (content?.type === "text" && content.text.startsWith("Error")) {
-        return new Text(theme.fg("error", `${ICONS.edit} ${content.text.split("\n")[0]}`), 0, 0);
-      }
-      if (!details?.diff) {
-        return new Text(theme.fg("success", `${ICONS.edit} applied`), 0, 0);
-      }
-      const diffLines = details.diff.split("\n");
-      let additions = 0;
-      let removals = 0;
-      for (const line of diffLines) {
-        if (line.startsWith("+") && !line.startsWith("+++")) additions++;
-        if (line.startsWith("-") && !line.startsWith("---")) removals++;
-      }
-      let text = theme.fg("success", `${ICONS.edit} +${additions}`);
-      text += theme.fg("dim", " / ");
-      text += theme.fg("error", `-${removals}`);
-      const previewLines = expanded ? 30 : 5;
-      for (const line of diffLines.slice(0, previewLines)) {
-        if (line.startsWith("+") && !line.startsWith("+++")) {
-          text += `\n${theme.fg("success", line)}`;
-        } else if (line.startsWith("-") && !line.startsWith("---")) {
-          text += `\n${theme.fg("error", line)}`;
-        } else {
-          text += `\n${theme.fg("dim", line)}`;
+        context.state._stats = content.text.split("\n")[0];
+      } else if (!details?.diff) {
+        context.state._stats = "applied";
+      } else {
+        const diffLines = details.diff.split("\n");
+        let additions = 0;
+        let removals = 0;
+        for (const line of diffLines) {
+          if (line.startsWith("+") && !line.startsWith("+++")) additions++;
+          if (line.startsWith("-") && !line.startsWith("---")) removals++;
         }
+        context.state._stats = `+${additions} / -${removals}`;
       }
-      if (diffLines.length > previewLines) {
-        text += `\n${theme.fg("muted", `… ${diffLines.length - previewLines} more`)}`;
+
+      if (!context.state._statsShown) {
+        context.state._statsShown = true;
+        queueMicrotask(() => context.invalidate());
       }
-      return new Text(text, 0, 0);
+
+      // Expanded: diff preview (no emoji, call line already has it)
+      if (expanded && details?.diff) {
+        const diffLines = details.diff.split("\n");
+        const previewLines = 30;
+        let text = "";
+        for (const line of diffLines.slice(0, previewLines)) {
+          if (line.startsWith("+") && !line.startsWith("+++")) {
+            text += `\n${theme.fg("success", line)}`;
+          } else if (line.startsWith("-") && !line.startsWith("---")) {
+            text += `\n${theme.fg("error", line)}`;
+          } else {
+            text += `\n${theme.fg("dim", line)}`;
+          }
+        }
+        if (diffLines.length > previewLines) {
+          text += `\n${theme.fg("muted", `… ${diffLines.length - previewLines} more`)}`;
+        }
+        return new Text(text, 0, 0);
+      }
+
+      return EMPTY;
     },
   });
 
@@ -342,15 +367,17 @@ export default function (pi: ExtensionAPI) {
     async execute(toolCallId, params, signal, onUpdate) {
       return originalBash.execute(toolCallId, params, signal, onUpdate);
     },
-    renderCall(args, theme) {
+    renderCall(args, theme, context) {
       const cmd = args.command.length > 80 ? `${args.command.slice(0, 77)}…` : args.command;
-      let text = theme.fg("toolTitle", theme.bold(`${ICONS.bash} $ `));
-      text += theme.fg("accent", cmd);
-      if (args.timeout) text += theme.fg("dim", ` (timeout: ${args.timeout}s)`);
-      return new Text(text, 0, 0);
+      let prefix = theme.fg("toolTitle", theme.bold(`${ICONS.bash} $ `));
+      prefix += theme.fg("accent", cmd);
+      if (args.timeout) prefix += theme.fg("dim", ` (timeout: ${args.timeout}s)`);
+      const stats = context.state._stats as string | undefined;
+      return new Text(stats ? prefix + theme.fg("dim", ` · ${stats}`) : prefix + theme.fg("dim", " …"), 0, 0);
     },
-    renderResult(result, { expanded, isPartial }, theme) {
-      if (isPartial) return new Text(theme.fg("warning", `${ICONS.bash} running…`), 0, 0);
+    renderResult(result, { expanded, isPartial }, theme, context) {
+      if (isPartial) return EMPTY;
+
       const details = result.details as BashToolDetails | undefined;
       const content = result.content[0];
       const output = content?.type === "text" ? content.text : "";
@@ -358,62 +385,37 @@ export default function (pi: ExtensionAPI) {
       const exitCode = exitMatch ? parseInt(exitMatch[1], 10) : null;
       const allLines = output.split("\n").filter((l) => l.trim());
       const lineCount = allLines.length;
-      let text = "";
+
+      // Compute stats for single-line call display
+      let stats = "";
       if (exitCode === 0 || exitCode === null) {
-        text += theme.fg("success", `${ICONS.bash} done`);
+        stats += "done";
       } else {
-        text += theme.fg("error", `${ICONS.bash} exit ${exitCode}`);
+        stats += `exit ${exitCode}`;
       }
-      text += theme.fg("dim", ` (${lineCount} lines)`);
-      if (details?.truncation?.truncated) text += theme.fg("warning", " [truncated]");
-      const previewLines = expanded ? 20 : 5;
-      const lines = allLines.slice(0, previewLines);
-      for (const line of lines) text += `\n${theme.fg("dim", line)}`;
-      if (lineCount > previewLines) {
-        text += `\n${theme.fg("muted", `… ${lineCount - previewLines} more`)}`;
+      stats += ` (${lineCount} lines)`;
+      if (details?.truncation?.truncated) stats += " [truncated]";
+      context.state._stats = stats;
+
+      if (!context.state._statsShown) {
+        context.state._statsShown = true;
+        queueMicrotask(() => context.invalidate());
       }
-      return new Text(text, 0, 0);
+
+      // Expanded: output preview (no emoji)
+      if (expanded) {
+        const previewLines = 20;
+        const lines = allLines.slice(0, previewLines);
+        let text = "";
+        for (const line of lines) text += `\n${theme.fg("dim", line)}`;
+        if (lineCount > previewLines) {
+          text += `\n${theme.fg("muted", `… ${lineCount - previewLines} more`)}`;
+        }
+        return new Text(text, 0, 0);
+      }
+
+      return EMPTY;
     },
-  });
-
-  // ─── GENERIC CATCH-ALL: status bar shows current tool emoji ──────────────
-
-  function iconFor(name: string): string {
-    return (ICONS as Record<string, string>)[name] ?? ICON_DEFAULT;
-  }
-
-  function clearStatusSoon(ctx: ExtensionContext, ms: number) {
-    setTimeout(() => {
-      if (!currentTool) ctx.ui.setStatus(STATUS_KEY, undefined);
-    }, ms);
-  }
-
-  pi.on("tool_execution_start", async (event, ctx) => {
-    const icon = iconFor(event.toolName);
-    currentTool = { name: event.toolName, icon };
-    ctx.ui.setStatus(STATUS_KEY, `${icon} ${event.toolName}…`);
-  });
-
-  pi.on("tool_execution_end", async (event, ctx) => {
-    const tool = currentTool;
-    currentTool = null;
-    if (event.isError) {
-      ctx.ui.setStatus(STATUS_KEY, `${tool?.icon ?? ICON_DEFAULT} ${tool?.name ?? "?"} ✗`);
-      clearStatusSoon(ctx, 2500);
-    } else {
-      ctx.ui.setStatus(STATUS_KEY, `${tool?.icon ?? ICON_DEFAULT} ${tool?.name ?? "?"} ✓`);
-      clearStatusSoon(ctx, 1800);
-    }
-  });
-
-  // ─── AGENT PULSE: status bar during LLM streaming ─────────────────────────
-
-  pi.on("agent_start", async (_event, ctx) => {
-    ctx.ui.setStatus(STATUS_KEY, "⚡ thinking…");
-  });
-
-  pi.on("agent_end", async (_event, ctx) => {
-    if (!currentTool) ctx.ui.setStatus(STATUS_KEY, undefined);
   });
 
   // ─── CLEANUP ──────────────────────────────────────────────────────────────
@@ -425,8 +427,6 @@ export default function (pi: ExtensionAPI) {
     if (fadeTimer) clearInterval(fadeTimer);
     splashActive = false;
     fadingOut = false;
-    currentTool = null;
     ctx.ui.setWidget(WIDGET_KEY, undefined);
-    ctx.ui.setStatus(STATUS_KEY, undefined);
   });
 }

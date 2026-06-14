@@ -7,6 +7,7 @@ Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-
 - Capitalized tool names with arguments in parentheses (e.g., `Edit(/path/to/file)` or `Bash(command)`)
 - Multi-line bash commands are indented for readability, with continuation lines aligned under the first line
 - Execution results hidden by default when collapsed with a `(ctrl+o to expand)` hint, and fully visible (preview/stats) when expanded
+- 🚗 Knight Rider amber scanning text on the "thinking…" indicator — a glowing hot spot sweeps across the label while a braille spinner animates
 
 ## Install
 

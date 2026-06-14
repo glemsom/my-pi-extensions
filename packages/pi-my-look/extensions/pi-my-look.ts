@@ -89,6 +89,40 @@ const BRAND_WIDGET: string[] = [];
 const WIDGET_KEY = "pi-modern-brand";
 const SPLASH_DURATION_MS = 2500;
 
+// ─── WORKING INDICATOR: Knight Rider amber scan on "thinking…" ────────
+
+const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const THINKING_TEXT = "thinking…";
+const KR_PEAK = { r: 0, g: 255, b: 255 };     // bright cyan (hot spot)
+const KR_BASE = { r: 20, g: 60, b: 70 };      // dark teal (cold / off state)
+
+/**
+ * Build combined frames: braille spinner + Knight Rider scanning text.
+ * Each frame shifts the amber "hot spot" across the thinking label — the glow
+ * sweeps left-to-right and wraps, just like the KITT scanner.  Characters far
+ * from the hot spot fade toward dark blue instead of black so they stay readable.
+ */
+function knightRiderThinkingFrames(): string[] {
+  const textLen = THINKING_TEXT.length;
+  const frameCount = BRAILLE_FRAMES.length;
+
+  return BRAILLE_FRAMES.map((braille, i) => {
+    // Map frame index → scan position along the text (linear sweep)
+    const scanPos = (i / (frameCount - 1)) * (textLen - 1);
+
+    let colored = "";
+    for (let c = 0; c < textLen; c++) {
+      const dist = Math.abs(c - scanPos);
+      const t = Math.max(0, 1 - dist / 2.5);  // 1 = hot spot, 0 = far away
+      const r = Math.round(KR_BASE.r + (KR_PEAK.r - KR_BASE.r) * t);
+      const g = Math.round(KR_BASE.g + (KR_PEAK.g - KR_BASE.g) * t);
+      const b = Math.round(KR_BASE.b + (KR_PEAK.b - KR_BASE.b) * t);
+      colored += `\x1b[38;2;${r};${g};${b}m${THINKING_TEXT[c]}\x1b[39m`;
+    }
+    return `${braille} ${colored}`;
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // EXTENSION
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,6 +173,12 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.on("session_start", async (event, ctx) => {
+    // Knight Rider amber scanning text on the thinking indicator
+    ctx.ui.setWorkingIndicator({
+      frames: knightRiderThinkingFrames(),
+    });
+    ctx.ui.setWorkingMessage("");
+
     if (event.reason === "startup" || event.reason === "new") {
       if (splashActive) dismissSplash(ctx);
       splashActive = true;

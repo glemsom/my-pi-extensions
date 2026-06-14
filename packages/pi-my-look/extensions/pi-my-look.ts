@@ -215,19 +215,24 @@ export default function (pi: ExtensionAPI) {
         if (details?.truncation?.truncated) stats += ` (truncated from ${details.truncation.totalLines})`;
       }
 
-      // Build result: stats + optional content preview
-      let resultText = `\n${theme.fg("dim", `· ${stats}`)}`;
+      // Build result: preview (5 lines collapsed, 15 expanded); stats only when expanded or no preview
+      let resultText = "";
 
-      if (expanded && content?.type === "text") {
+      if (content?.type === "text") {
         const allLines = content.text.split("\n");
         const lineCount = allLines.length;
-        const previewLines = 15;
-        const lines = allLines.slice(0, previewLines);
-        for (const line of lines) resultText += `\n${theme.fg("dim", line)}`;
-        if (lineCount > previewLines) {
-          resultText += `\n${theme.fg("muted", `… ${lineCount - previewLines} more`)}`;
+        const previewLines = expanded ? 15 : 5;
+        if (lineCount > 0) {
+          if (expanded) resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
+          const lines = allLines.slice(0, previewLines);
+          for (const line of lines) resultText += `\n${theme.fg("dim", line)}`;
+          if (lineCount > previewLines) {
+            const remaining = lineCount - previewLines;
+            resultText += `\n${theme.fg("muted", expanded ? `… ${remaining} more` : `… ${remaining} more — ctrl+o to expand`)}`;
+          }
         }
       }
+      if (!resultText) resultText = `\n${theme.fg("dim", `· ${stats}`)}`;
 
       return new Text(resultText, 0, 0);
     },
@@ -264,18 +269,24 @@ export default function (pi: ExtensionAPI) {
         stats = "written";
       }
 
-      // Build result: stats + optional content preview
-      let resultText = `\n${theme.fg("dim", `· ${stats}`)}`;
+      // Build result: preview (5 lines collapsed, 15 expanded); stats only when expanded or no preview
+      let resultText = "";
 
-      if (expanded && content?.type === "text" && !content.text.startsWith("Error")) {
+      if (content?.type === "text" && !content.text.startsWith("Error")) {
         const allLines = content.text.split("\n");
-        const previewLines = 15;
-        const lines = allLines.slice(0, previewLines);
-        for (const line of lines) resultText += `\n${theme.fg("dim", line)}`;
-        if (allLines.length > previewLines) {
-          resultText += `\n${theme.fg("muted", `… ${allLines.length - previewLines} more`)}`;
+        const lineCount = allLines.length;
+        const previewLines = expanded ? 15 : 5;
+        if (lineCount > 0) {
+          if (expanded) resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
+          const lines = allLines.slice(0, previewLines);
+          for (const line of lines) resultText += `\n${theme.fg("dim", line)}`;
+          if (lineCount > previewLines) {
+            const remaining = lineCount - previewLines;
+            resultText += `\n${theme.fg("muted", expanded ? `… ${remaining} more` : `… ${remaining} more — ctrl+o to expand`)}`;
+          }
         }
       }
+      if (!resultText) resultText = `\n${theme.fg("dim", `· ${stats}`)}`;
 
       return new Text(resultText, 0, 0);
     },
@@ -323,25 +334,31 @@ export default function (pi: ExtensionAPI) {
         stats = `+${additions} / -${removals}`;
       }
 
-      // Build result: stats + optional diff preview
-      let resultText = `\n${theme.fg("dim", `· ${stats}`)}`;
+      // Build result: diff preview (5 lines collapsed, 30 expanded); stats only when expanded or no diff
+      let resultText = "";
 
-      if (expanded && details?.diff) {
+      if (details?.diff) {
         const diffLines = details.diff.split("\n");
-        const previewLines = 30;
-        for (const line of diffLines.slice(0, previewLines)) {
-          if (line.startsWith("+") && !line.startsWith("+++")) {
-            resultText += `\n${theme.fg("success", line)}`;
-          } else if (line.startsWith("-") && !line.startsWith("---")) {
-            resultText += `\n${theme.fg("error", line)}`;
-          } else {
-            resultText += `\n${theme.fg("dim", line)}`;
+        const lineCount = diffLines.length;
+        const previewLines = expanded ? 30 : 5;
+        if (lineCount > 0) {
+          if (expanded) resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
+          for (const line of diffLines.slice(0, previewLines)) {
+            if (line.startsWith("+") && !line.startsWith("+++")) {
+              resultText += `\n${theme.fg("success", line)}`;
+            } else if (line.startsWith("-") && !line.startsWith("---")) {
+              resultText += `\n${theme.fg("error", line)}`;
+            } else {
+              resultText += `\n${theme.fg("dim", line)}`;
+            }
+          }
+          if (lineCount > previewLines) {
+            const remaining = lineCount - previewLines;
+            resultText += `\n${theme.fg("muted", expanded ? `… ${remaining} more` : `… ${remaining} more — ctrl+o to expand`)}`;
           }
         }
-        if (diffLines.length > previewLines) {
-          resultText += `\n${theme.fg("muted", `… ${diffLines.length - previewLines} more`)}`;
-        }
       }
+      if (!resultText) resultText = `\n${theme.fg("dim", `· ${stats}`)}`;
 
       return new Text(resultText, 0, 0);
     },
@@ -357,17 +374,12 @@ export default function (pi: ExtensionAPI) {
     async execute(toolCallId, params, signal, onUpdate) {
       return originalBash.execute(toolCallId, params, signal, onUpdate);
     },
-    renderCall(args, theme, context) {
+    renderCall(args, theme, _context) {
       const cmd = truncateToWidth(args.command, 60, "…");
       let prefix = theme.fg("toolTitle", theme.bold(`${ICONS.bash} $ `));
       prefix += theme.fg("accent", cmd);
       if (args.timeout) prefix += theme.fg("dim", ` (timeout: ${args.timeout}s)`);
-      const exitCode = context.state._exitCode as number | null | undefined;
-      const bgKey =
-        exitCode === undefined ? "toolPendingBg"
-        : exitCode === 0 || exitCode === null ? "toolSuccessBg"
-        : "toolErrorBg";
-      return new Text(prefix, 0, 0, (s) => theme.bg(bgKey, s));
+      return new Text(prefix, 0, 0);
     },
     renderResult(result, { expanded, isPartial }, theme, context) {
       if (isPartial) return EMPTY;
@@ -390,24 +402,22 @@ export default function (pi: ExtensionAPI) {
       stats += ` (${lineCount} lines)`;
       if (details?.truncation?.truncated) stats += " [truncated]";
 
-      // Keep exitCode for renderCall background coloring
-      context.state._exitCode = exitCode;
-      if (!context.state._exitCodeSet) {
-        context.state._exitCodeSet = true;
-        queueMicrotask(() => context.invalidate());
-      }
 
-      // Build result: stats + optional output preview
-      let resultText = `\n${theme.fg("dim", `· ${stats}`)}`;
 
-      if (expanded) {
-        const previewLines = 20;
+      // Build result: output preview (5 lines collapsed, 20 expanded); stats only when expanded or no output
+      let resultText = "";
+
+      const previewLines = expanded ? 20 : 5;
+      if (lineCount > 0) {
+        if (expanded) resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
         const lines = allLines.slice(0, previewLines);
         for (const line of lines) resultText += `\n${theme.fg("dim", line)}`;
         if (lineCount > previewLines) {
-          resultText += `\n${theme.fg("muted", `… ${lineCount - previewLines} more`)}`;
+          const remaining = lineCount - previewLines;
+          resultText += `\n${theme.fg("muted", expanded ? `… ${remaining} more` : `… ${remaining} more — ctrl+o to expand`)}`;
         }
       }
+      if (!resultText) resultText = `\n${theme.fg("dim", `· ${stats}`)}`;
 
       return new Text(resultText, 0, 0);
     },

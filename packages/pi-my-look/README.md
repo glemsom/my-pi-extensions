@@ -3,8 +3,7 @@
 Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent).
 
 - 🎨 Branded splash on session start (typewriter reveal + fade-out)
-- 🔍📝✏️⚡ Tool icons inline in chat for read, write, edit, bash — clean call lines with stats below (e.g. `· +3 / -16` for edits, `· done (13 lines)` for bash), no duplicate icons
-- 🟢🔴 Bash exit-code background coloring (green on success, red on error)
+- 🔍📝✏️⚡ Tool icons inline in chat for read, write, edit, bash — clean call lines, stats shown only when expanded (e.g. `· +3 / -16` for edits, `· done (13 lines)` for bash), with `ctrl+o` hint to expand
 
 ## Install
 

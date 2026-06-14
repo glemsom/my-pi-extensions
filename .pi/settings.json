@@ -25,7 +25,7 @@
     "opencode-go/minimax-m3"
   ],
   "defaultProvider": "opencode-go",
-  "defaultModel": "deepseek-v4-pro",
+  "defaultModel": "deepseek-v4-flash",
   "header-info": true,
   "header": false
 }

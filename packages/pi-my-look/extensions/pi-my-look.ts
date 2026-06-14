@@ -3,7 +3,6 @@
  *
  * Slick modern UI polish for the pi coding agent:
  *   - Tool rendering with inline icons and diff/result previews
- *   - Knight Rider animated working indicator
  *
  * Install: pi install npm:@glemsom/pi-my-look
  */
@@ -20,10 +19,6 @@ import {
   type ReadToolDetails,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CONFIG — tweak these to taste
-// ─────────────────────────────────────────────────────────────────────────────
 
 function capitalize(str: string): string {
   if (!str) return "";
@@ -48,77 +43,6 @@ function getDot(context: any, theme: any): string {
   return theme.fg("success", "●");
 }
 
-// ─── WORKING INDICATOR: Knight Rider cyan scan on "Working..." ────────
-
-const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const THINKING_TEXT = "Working...";
-const KR_PEAK = { r: 0, g: 255, b: 255 };     // bright cyan (hot spot)
-const KR_BASE = { r: 20, g: 60, b: 70 };      // dark teal (cold / off state)
-
-/**
- * Build combined frames: braille spinner + Knight Rider scanning text.
- * Each frame shifts the cyan "hot spot" across the working label — the glow
- * sweeps left-to-right and wraps, just like the KITT scanner.  Characters far
- * from the hot spot fade toward dark blue instead of black so they stay readable.
- */
-function knightRiderThinkingFrames(): string[] {
-  const textLen = THINKING_TEXT.length;
-  const frameCount = BRAILLE_FRAMES.length;
-
-  // Make a bidirectional sweep (forward then backward) for a smoother Knight Rider effect
-  const sweepLen = frameCount * 2 - 2; // e.g. 10 -> 18 frames
-  const frames: string[] = [];
-
-  // Gaussian width (controls how wide/soft the glow is)
-  const sigma = 1.0;
-
-  for (let i = 0; i < sweepLen; i++) {
-    // forwardIdx goes 0..frameCount-1 then back to 0
-    const forwardIdx = i < frameCount ? i : sweepLen - i;
-
-    // Map frame index → scan position along the text (linear sweep across the label)
-    const scanPos = (forwardIdx / (frameCount - 1)) * (textLen - 1);
-
-    // Colorize and optionally bold the braille spinner glyph so it feels part of the same animation
-    const braille = BRAILLE_FRAMES[forwardIdx];
-    const braillePos = (forwardIdx / (frameCount - 1)) * (textLen - 1);
-    const brailleDist = Math.abs(braillePos - scanPos);
-    // Gaussian falloff for a smooth soft glow
-    const brailleT = Math.exp(- (brailleDist * brailleDist) / (2 * sigma * sigma));
-    const br = Math.round(KR_BASE.r + (KR_PEAK.r - KR_BASE.r) * brailleT);
-    const bg = Math.round(KR_BASE.g + (KR_PEAK.g - KR_BASE.g) * brailleT);
-    const bb = Math.round(KR_BASE.b + (KR_PEAK.b - KR_BASE.b) * brailleT);
-
-    const brailleBold = brailleT > 0.85; // hottest braille frames get bold
-    const coloredBraille = brailleBold
-      ? `\x1b[1m\x1b[38;2;${br};${bg};${bb}m${braille}\x1b[0m`
-      : `\x1b[38;2;${br};${bg};${bb}m${braille}\x1b[0m`;
-
-    // Build colored text; bold the single hottest character for extra emphasis
-    const hotIndex = Math.round(scanPos);
-    let colored = "";
-    for (let c = 0; c < textLen; c++) {
-      const dist = Math.abs(c - scanPos);
-      // Gaussian falloff: softer, more natural glow than linear
-      const t = Math.exp(- (dist * dist) / (2 * sigma * sigma)); // 1 = hot spot, ->0 = far away
-      const r = Math.round(KR_BASE.r + (KR_PEAK.r - KR_BASE.r) * t);
-      const g = Math.round(KR_BASE.g + (KR_PEAK.g - KR_BASE.g) * t);
-      const b = Math.round(KR_BASE.b + (KR_PEAK.b - KR_BASE.b) * t);
-
-      if (c === hotIndex) {
-        // hottest char: bold + colored
-        colored += `\x1b[1m\x1b[38;2;${r};${g};${b}m${THINKING_TEXT[c]}\x1b[0m`;
-      } else {
-        colored += `\x1b[38;2;${r};${g};${b}m${THINKING_TEXT[c]}\x1b[0m`;
-      }
-    }
-
-    frames.push(`${coloredBraille} ${colored}`);
-  }
-
-  return frames;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // EXTENSION
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,18 +50,7 @@ function knightRiderThinkingFrames(): string[] {
 export default function (pi: ExtensionAPI) {
   const cwd = process.cwd();
 
-  pi.on("session_start", async (_event, ctx) => {
-    // Knight Rider cyan scanning text on the working indicator
-    ctx.ui.setWorkingIndicator({
-      frames: knightRiderThinkingFrames(),
-    });
-    ctx.ui.setWorkingMessage("");
-  });
-
   // ─── TOOL ICONS: override 4 built-ins ─────────────────────────────────────
-
-  // Invisible placeholder returned by renderResult when nothing to show.
-  const EMPTY: { render: () => string[]; invalidate: () => void } = { render: () => [], invalidate: () => {} };
 
   // Read
   const originalRead = createReadTool(cwd);
@@ -154,50 +67,65 @@ export default function (pi: ExtensionAPI) {
       const dot = getDot(context, theme);
       const title = theme.fg("toolTitle", theme.bold(capitalize("read")));
       const path = theme.fg("accent", args.path);
-      let text = `${dot} ${title}(${path})`;
+
+      // Append :offset-end range inline when the LLM has specified them
+      let range = "";
+      if (args.offset !== undefined || args.limit !== undefined) {
+        const start = args.offset ?? 1;
+        const end = args.limit !== undefined ? start + args.limit - 1 : undefined;
+        range = theme.fg("muted", `:${start}${end !== undefined ? `-${end}` : ""}`);
+      }
+
+      let text = `${dot} ${title}(${path}${range})`;
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }
       return new Text(text, 0, 0);
     },
     renderResult(result, { expanded, isPartial }, theme, _context) {
-      if (isPartial || !expanded) return EMPTY;
+      if (isPartial || !expanded) {
+        const content = result.content[0];
+        if (content?.type === "image") {
+          return new Text(theme.fg("success", "Image loaded"), 0, 0);
+        }
+        if (content?.type !== "text") {
+          return new Text(theme.fg("error", "No content"), 0, 0);
+        }
+        const details = result.details as ReadToolDetails | undefined;
+        if (details?.truncation?.truncated) {
+          return new Text(theme.fg("warning", `truncated from ${details.truncation.totalLines} lines`), 0, 0);
+        }
+        return new Text("", 0, 0);
+      }
 
       const details = result.details as ReadToolDetails | undefined;
       const content = result.content[0];
 
-      // Compute stats line
-      let stats = "";
       if (content?.type === "image") {
-        stats = "image loaded";
-      } else if (content?.type !== "text") {
-        stats = "no content";
-      } else {
-        const allLines = content.text.split("\n");
-        stats = `${allLines.length} lines`;
-        if (details?.truncation?.truncated) stats += ` (truncated from ${details.truncation.totalLines})`;
+        return new Text(theme.fg("success", "Image loaded"), 0, 0);
       }
 
-      // Build result: preview (15 lines expanded); stats only when expanded
-      let resultText = "";
-
-      if (content?.type === "text") {
-        const allLines = content.text.split("\n");
-        const lineCount = allLines.length;
-        const previewLines = 15;
-        if (lineCount > 0) {
-          resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
-          const lines = allLines.slice(0, previewLines);
-          for (const line of lines) resultText += `\n${theme.fg("dim", line)}`;
-          if (lineCount > previewLines) {
-            const remaining = lineCount - previewLines;
-            resultText += `\n${theme.fg("muted", `… ${remaining} more`)}`;
-          }
-        }
+      if (content?.type !== "text") {
+        return new Text(theme.fg("error", "No content"), 0, 0);
       }
-      if (!resultText) resultText = `\n${theme.fg("dim", `· ${stats}`)}`;
 
-      return new Text(resultText, 0, 0);
+      const allLines = content.text.split("\n");
+      const lineCount = allLines.length;
+      let text = theme.fg("success", `${lineCount} lines`);
+      if (details?.truncation?.truncated) {
+        text += theme.fg("warning", ` (truncated from ${details.truncation.totalLines})`);
+      }
+
+      const previewLines = 15;
+      const lines = allLines.slice(0, previewLines);
+      for (const line of lines) {
+        text += `\n${theme.fg("dim", line)}`;
+      }
+      if (lineCount > previewLines) {
+        text += `\n${theme.fg("muted", `... ${lineCount - previewLines} more lines`)}`;
+      }
+
+      return new Text(text, 0, 0);
     },
   });
 
@@ -222,41 +150,21 @@ export default function (pi: ExtensionAPI) {
       }
       return new Text(text, 0, 0);
     },
-    renderResult(result, { expanded, isPartial }, theme, _context) {
-      if (isPartial || !expanded) return EMPTY;
+    renderResult(result, { isPartial }, theme, _context) {
+      if (isPartial) return new Text(theme.fg("warning", "Writing..."), 0, 0);
 
       const content = result.content[0];
-      let stats: string;
       if (content?.type === "text" && content.text.startsWith("Error")) {
-        stats = content.text.split("\n")[0]!;
-      } else {
-        stats = "written";
+        return new Text(theme.fg("error", content.text.split("\n")[0]), 0, 0);
       }
 
-      // Build result: preview (15 lines expanded)
-      let resultText = "";
-
-      if (content?.type === "text" && !content.text.startsWith("Error")) {
-        const allLines = content.text.split("\n");
-        const lineCount = allLines.length;
-        const previewLines = 15;
-        if (lineCount > 0) {
-          resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
-          const lines = allLines.slice(0, previewLines);
-          for (const line of lines) resultText += `\n${theme.fg("dim", line)}`;
-          if (lineCount > previewLines) {
-            const remaining = lineCount - previewLines;
-            resultText += `\n${theme.fg("muted", `… ${remaining} more`)}`;
-          }
-        }
-      }
-      if (!resultText) resultText = `\n${theme.fg("dim", `· ${stats}`)}`;
-
-      return new Text(resultText, 0, 0);
+      return new Text("", 0, 0);
     },
   });
 
-  // Edit
+  // Edit — diff stats are stored in shared context.state so renderCall can
+  // display them inline on the same line, without a separate result row.
+  type EditState = { additions?: number; removals?: number };
   const originalEdit = createEditTool(cwd);
   pi.registerTool({
     name: "edit",
@@ -272,61 +180,72 @@ export default function (pi: ExtensionAPI) {
       const title = theme.fg("toolTitle", theme.bold(capitalize("edit")));
       const path = theme.fg("accent", args.path);
       let text = `${dot} ${title}(${path})`;
-      if (!context.expanded && !context.isPartial) {
+
+      // Inline diff stats once the result is available via shared state
+      const state = context.state as EditState;
+      if (!context.isPartial && state.additions !== undefined && state.removals !== undefined) {
+        text += " " + theme.fg("success", `+${state.additions}`);
+        text += theme.fg("dim", "/");
+        text += theme.fg("error", `-${state.removals}`);
+        if (!context.expanded) {
+          text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
+        }
+      } else if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }
+
       return new Text(text, 0, 0);
     },
-    renderResult(result, { expanded, isPartial }, theme, _context) {
-      if (isPartial || !expanded) return EMPTY;
+    renderResult(result, { expanded, isPartial }, theme, context) {
+      if (isPartial) return new Text(theme.fg("warning", "Editing..."), 0, 0);
 
       const details = result.details as EditToolDetails | undefined;
       const content = result.content[0];
 
-      // Compute stats line
-      let stats: string;
       if (content?.type === "text" && content.text.startsWith("Error")) {
-        stats = content.text.split("\n")[0]!;
-      } else if (!details?.diff) {
-        stats = "applied";
-      } else {
-        const diffLines = details.diff.split("\n");
-        let additions = 0;
-        let removals = 0;
-        for (const line of diffLines) {
-          if (line.startsWith("+") && !line.startsWith("+++")) additions++;
-          if (line.startsWith("-") && !line.startsWith("---")) removals++;
-        }
-        stats = `+${additions} / -${removals}`;
+        return new Text(theme.fg("error", content.text.split("\n")[0]), 0, 0);
       }
 
-      // Build result: diff preview (30 lines expanded)
-      let resultText = "";
+      if (!details?.diff) {
+        return new Text(theme.fg("success", "Applied"), 0, 0);
+      }
 
-      if (details?.diff) {
-        const diffLines = details.diff.split("\n");
-        const lineCount = diffLines.length;
-        const previewLines = 30;
-        if (lineCount > 0) {
-          resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
-          for (const line of diffLines.slice(0, previewLines)) {
-            if (line.startsWith("+") && !line.startsWith("+++")) {
-              resultText += `\n${theme.fg("success", line)}`;
-            } else if (line.startsWith("-") && !line.startsWith("---")) {
-              resultText += `\n${theme.fg("error", line)}`;
-            } else {
-              resultText += `\n${theme.fg("dim", line)}`;
-            }
-          }
-          if (lineCount > previewLines) {
-            const remaining = lineCount - previewLines;
-            resultText += `\n${theme.fg("muted", `… ${remaining} more`)}`;
-          }
+      // Count additions and removals from the diff
+      const diffLines = details.diff.split("\n");
+      let additions = 0;
+      let removals = 0;
+      for (const line of diffLines) {
+        if (line.startsWith("+") && !line.startsWith("+++")) additions++;
+        if (line.startsWith("-") && !line.startsWith("---")) removals++;
+      }
+
+      // Store stats in shared state and re-render the call line to show them inline
+      const state = context.state as EditState;
+      if (state.additions !== additions || state.removals !== removals) {
+        state.additions = additions;
+        state.removals = removals;
+        context.invalidate();
+      }
+
+      // Collapsed: stats are shown inline on the call line — nothing needed here
+      if (!expanded) return new Text("", 0, 0);
+
+      // Expanded: show the full coloured diff
+      let text = "";
+      for (const line of diffLines.slice(0, 30)) {
+        if (line.startsWith("+") && !line.startsWith("+++")) {
+          text += `${text ? "\n" : ""}${theme.fg("success", line)}`;
+        } else if (line.startsWith("-") && !line.startsWith("---")) {
+          text += `${text ? "\n" : ""}${theme.fg("error", line)}`;
+        } else {
+          text += `${text ? "\n" : ""}${theme.fg("dim", line)}`;
         }
       }
-      if (!resultText) resultText = `\n${theme.fg("dim", `· ${stats}`)}`;
+      if (diffLines.length > 30) {
+        text += `\n${theme.fg("muted", `... ${diffLines.length - 30} more diff lines`)}`;
+      }
 
-      return new Text(resultText, 0, 0);
+      return new Text(text, 0, 0);
     },
   });
 
@@ -362,42 +281,31 @@ export default function (pi: ExtensionAPI) {
       return new Text(text, 0, 0);
     },
     renderResult(result, { expanded, isPartial }, theme, _context) {
-      if (isPartial || !expanded) return EMPTY;
+      if (isPartial) return new Text(theme.fg("warning", "Running..."), 0, 0);
 
       const details = result.details as BashToolDetails | undefined;
       const content = result.content[0];
       const output = content?.type === "text" ? content.text : "";
-      const exitMatch = output.match(/exit code: (\d+)/);
-      const exitCode = exitMatch ? parseInt(exitMatch[1], 10) : null;
-      const allLines = output.split("\n").filter((l) => l.trim());
-      const lineCount = allLines.length;
 
-      // Compute stats line
-      let stats = "";
-      if (exitCode === 0 || exitCode === null) {
-        stats += "done";
-      } else {
-        stats += `exit ${exitCode}`;
+      if (details?.truncation?.truncated) {
+        return new Text(theme.fg("warning", "[truncated]"), 0, 0);
       }
-      stats += ` (${lineCount} lines)`;
-      if (details?.truncation?.truncated) stats += " [truncated]";
 
-      // Build result: output preview (20 lines expanded)
-      let resultText = "";
+      if (!expanded) {
+        return new Text("", 0, 0);
+      }
 
+      const allLines = output.split("\n");
+      let text = "";
       const previewLines = 20;
-      if (lineCount > 0) {
-        resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
-        const lines = allLines.slice(0, previewLines);
-        for (const line of lines) resultText += `\n${theme.fg("dim", line)}`;
-        if (lineCount > previewLines) {
-          const remaining = lineCount - previewLines;
-          resultText += `\n${theme.fg("muted", `… ${remaining} more`)}`;
-        }
+      for (const line of allLines.slice(0, previewLines)) {
+        text += `\n${theme.fg("dim", line)}`;
       }
-      if (!resultText) resultText = `\n${theme.fg("dim", `· ${stats}`)}`;
+      if (allLines.length > previewLines) {
+        text += `\n${theme.fg("muted", `... ${allLines.length - previewLines} more lines`)}`;
+      }
 
-      return new Text(resultText, 0, 0);
+      return new Text(text, 0, 0);
     },
   });
 

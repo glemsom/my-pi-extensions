@@ -65,8 +65,19 @@ export default function (pi: ExtensionAPI) {
     },
     renderCall(args, theme, context) {
       const dot = getDot(context, theme);
+      const icon = theme.fg("muted", "🔍");
       const title = theme.fg("toolTitle", theme.bold(capitalize("read")));
-      const path = theme.fg("accent", args.path);
+      
+      const pathStr = args.path;
+      const lastSlash = pathStr.lastIndexOf("/");
+      let path;
+      if (lastSlash !== -1) {
+        const dir = pathStr.slice(0, lastSlash + 1);
+        const file = pathStr.slice(lastSlash + 1);
+        path = theme.fg("muted", dir) + theme.fg("accent", file);
+      } else {
+        path = theme.fg("accent", pathStr);
+      }
 
       // Append :offset-end range inline when the LLM has specified them
       let range = "";
@@ -76,7 +87,7 @@ export default function (pi: ExtensionAPI) {
         range = theme.fg("muted", `:${start}${end !== undefined ? `-${end}` : ""}`);
       }
 
-      let text = `${dot} ${title}(${path}${range})`;
+      let text = `${dot} ${icon} ${title}(${path}${range})`;
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }
@@ -142,9 +153,21 @@ export default function (pi: ExtensionAPI) {
     },
     renderCall(args, theme, context) {
       const dot = getDot(context, theme);
+      const icon = theme.fg("muted", "💾");
       const title = theme.fg("toolTitle", theme.bold(capitalize("write")));
-      const path = theme.fg("accent", args.path);
-      let text = `${dot} ${title}(${path})`;
+      
+      const pathStr = args.path;
+      const lastSlash = pathStr.lastIndexOf("/");
+      let path;
+      if (lastSlash !== -1) {
+        const dir = pathStr.slice(0, lastSlash + 1);
+        const file = pathStr.slice(lastSlash + 1);
+        path = theme.fg("muted", dir) + theme.fg("accent", file);
+      } else {
+        path = theme.fg("accent", pathStr);
+      }
+
+      let text = `${dot} ${icon} ${title}(${path})`;
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }
@@ -177,9 +200,21 @@ export default function (pi: ExtensionAPI) {
     },
     renderCall(args, theme, context) {
       const dot = getDot(context, theme);
+      const icon = theme.fg("muted", "✏️");
       const title = theme.fg("toolTitle", theme.bold(capitalize("edit")));
-      const path = theme.fg("accent", args.path);
-      let text = `${dot} ${title}(${path})`;
+      
+      const pathStr = args.path;
+      const lastSlash = pathStr.lastIndexOf("/");
+      let path;
+      if (lastSlash !== -1) {
+        const dir = pathStr.slice(0, lastSlash + 1);
+        const file = pathStr.slice(lastSlash + 1);
+        path = theme.fg("muted", dir) + theme.fg("accent", file);
+      } else {
+        path = theme.fg("accent", pathStr);
+      }
+
+      let text = `${dot} ${icon} ${title}(${path})`;
 
       // Inline diff stats once the result is available via shared state
       const state = context.state as EditState;
@@ -262,19 +297,20 @@ export default function (pi: ExtensionAPI) {
     },
     renderCall(args, theme, context) {
       const dot = getDot(context, theme);
+      const icon = theme.fg("muted", "❯");
       const title = theme.fg("toolTitle", theme.bold(capitalize("bash")));
       const lines = args.command.split('\n').filter((l) => l.trim());
 
       let cmd: string;
       if (lines.length > 1) {
-        const indent = " ".repeat(7); // "● Bash(" is 7 characters
+        const indent = " ".repeat(9); // "● ❯ Bash(" is 9 characters
         cmd = lines.map((line, i) => i === 0 ? line : indent + line).join('\n');
       } else {
         cmd = args.command;
       }
 
       const coloredCmd = theme.fg("accent", cmd);
-      let text = `${dot} ${title}(${coloredCmd})`;
+      let text = `${dot} ${icon} ${title}(${coloredCmd})`;
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }

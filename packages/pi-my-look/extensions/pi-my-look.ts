@@ -16,6 +16,7 @@ import {
   createEditTool,
   createReadTool,
   createWriteTool,
+  keyHint,
   type BashToolDetails,
   type EditToolDetails,
   type ReadToolDetails,
@@ -26,14 +27,22 @@ import { Text } from "@earendil-works/pi-tui";
 // CONFIG — tweak these to taste
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ICONS = {
-  read: "🔍",
-  write: "📝",
-  edit: "✏️",
-  bash: "⚡",
-} as const;
-
 const TAGLINE = "pi-my-look";
+
+function capitalize(str: string): string {
+  if (!str) return "";
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+function getDot(context: any, theme: any): string {
+  if (context?.isPartial) {
+    return theme.fg("warning", "●");
+  }
+  if (context?.isError) {
+    return theme.fg("error", "●");
+  }
+  return theme.fg("success", "●");
+}
 
 // Splash ANSI gradient color stops (top → bottom).
 // DimLevel shrinks each channel for fade-out transitions.
@@ -180,26 +189,29 @@ export default function (pi: ExtensionAPI) {
   // Invisible placeholder returned by renderResult when nothing to show.
   const EMPTY: { render: () => string[]; invalidate: () => void } = { render: () => [], invalidate: () => {} };
 
-  // Read: 🔍
+  // Read
   const originalRead = createReadTool(cwd);
   pi.registerTool({
     name: "read",
     label: "read",
     description: originalRead.description,
     parameters: originalRead.parameters,
+    renderShell: "self",
     async execute(toolCallId, params, signal, onUpdate) {
       return originalRead.execute(toolCallId, params, signal, onUpdate);
     },
-    renderCall(args, theme, _context) {
-      return new Text(
-        theme.fg("toolTitle", theme.bold(`${ICONS.read} read `)) +
-          theme.fg("accent", args.path),
-        0,
-        0
-      );
+    renderCall(args, theme, context) {
+      const dot = getDot(context, theme);
+      const title = theme.fg("toolTitle", theme.bold(capitalize("read")));
+      const path = theme.fg("accent", args.path);
+      let text = `${dot} ${title}(${path})`;
+      if (!context.expanded && !context.isPartial) {
+        text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
+      }
+      return new Text(text, 0, 0);
     },
     renderResult(result, { expanded, isPartial }, theme, _context) {
-      if (isPartial) return EMPTY;
+      if (isPartial || !expanded) return EMPTY;
 
       const details = result.details as ReadToolDetails | undefined;
       const content = result.content[0];
@@ -216,20 +228,20 @@ export default function (pi: ExtensionAPI) {
         if (details?.truncation?.truncated) stats += ` (truncated from ${details.truncation.totalLines})`;
       }
 
-      // Build result: preview (5 lines collapsed, 15 expanded); stats only when expanded or no preview
+      // Build result: preview (15 lines expanded); stats only when expanded
       let resultText = "";
 
       if (content?.type === "text") {
         const allLines = content.text.split("\n");
         const lineCount = allLines.length;
-        const previewLines = expanded ? 15 : 5;
+        const previewLines = 15;
         if (lineCount > 0) {
-          if (expanded) resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
+          resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
           const lines = allLines.slice(0, previewLines);
           for (const line of lines) resultText += `\n${theme.fg("dim", line)}`;
           if (lineCount > previewLines) {
             const remaining = lineCount - previewLines;
-            resultText += `\n${theme.fg("muted", expanded ? `… ${remaining} more` : `… ${remaining} more — ctrl+o to expand`)}`;
+            resultText += `\n${theme.fg("muted", `… ${remaining} more`)}`;
           }
         }
       }
@@ -239,28 +251,29 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // Write: 📝
+  // Write
   const originalWrite = createWriteTool(cwd);
   pi.registerTool({
     name: "write",
     label: "write",
     description: originalWrite.description,
     parameters: originalWrite.parameters,
+    renderShell: "self",
     async execute(toolCallId, params, signal, onUpdate) {
       return originalWrite.execute(toolCallId, params, signal, onUpdate);
     },
-    renderCall(args, theme, _context) {
-      const lineCount = args.content.split("\n").length;
-      return new Text(
-        theme.fg("toolTitle", theme.bold(`${ICONS.write} write `)) +
-          theme.fg("accent", args.path) +
-          theme.fg("dim", ` (${lineCount} lines)`),
-        0,
-        0
-      );
+    renderCall(args, theme, context) {
+      const dot = getDot(context, theme);
+      const title = theme.fg("toolTitle", theme.bold(capitalize("write")));
+      const path = theme.fg("accent", args.path);
+      let text = `${dot} ${title}(${path})`;
+      if (!context.expanded && !context.isPartial) {
+        text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
+      }
+      return new Text(text, 0, 0);
     },
     renderResult(result, { expanded, isPartial }, theme, _context) {
-      if (isPartial) return EMPTY;
+      if (isPartial || !expanded) return EMPTY;
 
       const content = result.content[0];
       let stats: string;
@@ -270,20 +283,20 @@ export default function (pi: ExtensionAPI) {
         stats = "written";
       }
 
-      // Build result: preview (5 lines collapsed, 15 expanded); stats only when expanded or no preview
+      // Build result: preview (15 lines expanded)
       let resultText = "";
 
       if (content?.type === "text" && !content.text.startsWith("Error")) {
         const allLines = content.text.split("\n");
         const lineCount = allLines.length;
-        const previewLines = expanded ? 15 : 5;
+        const previewLines = 15;
         if (lineCount > 0) {
-          if (expanded) resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
+          resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
           const lines = allLines.slice(0, previewLines);
           for (const line of lines) resultText += `\n${theme.fg("dim", line)}`;
           if (lineCount > previewLines) {
             const remaining = lineCount - previewLines;
-            resultText += `\n${theme.fg("muted", expanded ? `… ${remaining} more` : `… ${remaining} more — ctrl+o to expand`)}`;
+            resultText += `\n${theme.fg("muted", `… ${remaining} more`)}`;
           }
         }
       }
@@ -293,7 +306,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // Edit: ✏️
+  // Edit
   const originalEdit = createEditTool(cwd);
   pi.registerTool({
     name: "edit",
@@ -304,16 +317,18 @@ export default function (pi: ExtensionAPI) {
     async execute(toolCallId, params, signal, onUpdate) {
       return originalEdit.execute(toolCallId, params, signal, onUpdate);
     },
-    renderCall(args, theme, _context) {
-      return new Text(
-        theme.fg("toolTitle", theme.bold(`${ICONS.edit} edit `)) +
-          theme.fg("accent", args.path),
-        0,
-        0
-      );
+    renderCall(args, theme, context) {
+      const dot = getDot(context, theme);
+      const title = theme.fg("toolTitle", theme.bold(capitalize("edit")));
+      const path = theme.fg("accent", args.path);
+      let text = `${dot} ${title}(${path})`;
+      if (!context.expanded && !context.isPartial) {
+        text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
+      }
+      return new Text(text, 0, 0);
     },
     renderResult(result, { expanded, isPartial }, theme, _context) {
-      if (isPartial) return EMPTY;
+      if (isPartial || !expanded) return EMPTY;
 
       const details = result.details as EditToolDetails | undefined;
       const content = result.content[0];
@@ -335,15 +350,15 @@ export default function (pi: ExtensionAPI) {
         stats = `+${additions} / -${removals}`;
       }
 
-      // Build result: diff preview (5 lines collapsed, 30 expanded); stats only when expanded or no diff
+      // Build result: diff preview (30 lines expanded)
       let resultText = "";
 
       if (details?.diff) {
         const diffLines = details.diff.split("\n");
         const lineCount = diffLines.length;
-        const previewLines = expanded ? 30 : 5;
+        const previewLines = 30;
         if (lineCount > 0) {
-          if (expanded) resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
+          resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
           for (const line of diffLines.slice(0, previewLines)) {
             if (line.startsWith("+") && !line.startsWith("+++")) {
               resultText += `\n${theme.fg("success", line)}`;
@@ -355,7 +370,7 @@ export default function (pi: ExtensionAPI) {
           }
           if (lineCount > previewLines) {
             const remaining = lineCount - previewLines;
-            resultText += `\n${theme.fg("muted", expanded ? `… ${remaining} more` : `… ${remaining} more — ctrl+o to expand`)}`;
+            resultText += `\n${theme.fg("muted", `… ${remaining} more`)}`;
           }
         }
       }
@@ -365,24 +380,29 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // Bash: ⚡
+  // Bash
   const originalBash = createBashTool(cwd);
   pi.registerTool({
     name: "bash",
     label: "bash",
     description: originalBash.description,
     parameters: originalBash.parameters,
+    renderShell: "self",
     async execute(toolCallId, params, signal, onUpdate) {
       return originalBash.execute(toolCallId, params, signal, onUpdate);
     },
-    renderCall(args, theme, _context) {
-      let prefix = theme.fg("toolTitle", theme.bold(`${ICONS.bash} $ `));
-      prefix += theme.fg("accent", args.command);
-      if (args.timeout) prefix += theme.fg("dim", ` (timeout: ${args.timeout}s)`);
-      return new Text(prefix, 0, 0);
+    renderCall(args, theme, context) {
+      const dot = getDot(context, theme);
+      const title = theme.fg("toolTitle", theme.bold(capitalize("bash")));
+      const cmd = theme.fg("accent", args.command);
+      let text = `${dot} ${title}(${cmd})`;
+      if (!context.expanded && !context.isPartial) {
+        text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
+      }
+      return new Text(text, 0, 0);
     },
     renderResult(result, { expanded, isPartial }, theme, _context) {
-      if (isPartial) return EMPTY;
+      if (isPartial || !expanded) return EMPTY;
 
       const details = result.details as BashToolDetails | undefined;
       const content = result.content[0];
@@ -402,19 +422,17 @@ export default function (pi: ExtensionAPI) {
       stats += ` (${lineCount} lines)`;
       if (details?.truncation?.truncated) stats += " [truncated]";
 
-
-
-      // Build result: output preview (5 lines collapsed, 20 expanded); stats only when expanded or no output
+      // Build result: output preview (20 lines expanded)
       let resultText = "";
 
-      const previewLines = expanded ? 20 : 5;
+      const previewLines = 20;
       if (lineCount > 0) {
-        if (expanded) resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
+        resultText += `\n${theme.fg("dim", `· ${stats}`)}`;
         const lines = allLines.slice(0, previewLines);
         for (const line of lines) resultText += `\n${theme.fg("dim", line)}`;
         if (lineCount > previewLines) {
           const remaining = lineCount - previewLines;
-          resultText += `\n${theme.fg("muted", expanded ? `… ${remaining} more` : `… ${remaining} more — ctrl+o to expand`)}`;
+          resultText += `\n${theme.fg("muted", `… ${remaining} more`)}`;
         }
       }
       if (!resultText) resultText = `\n${theme.fg("dim", `· ${stats}`)}`;

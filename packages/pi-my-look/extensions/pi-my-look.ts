@@ -20,7 +20,7 @@ import {
   type EditToolDetails,
   type ReadToolDetails,
 } from "@earendil-works/pi-coding-agent";
-import { Text, truncateToWidth } from "@earendil-works/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIG — tweak these to taste
@@ -131,6 +131,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (event, ctx) => {
     if (event.reason === "startup" || event.reason === "new") {
+      if (splashActive) dismissSplash(ctx);
       splashActive = true;
       typewriterPos = 0;
       typewriterDone = false;
@@ -375,13 +376,12 @@ export default function (pi: ExtensionAPI) {
       return originalBash.execute(toolCallId, params, signal, onUpdate);
     },
     renderCall(args, theme, _context) {
-      const cmd = truncateToWidth(args.command, 60, "…");
       let prefix = theme.fg("toolTitle", theme.bold(`${ICONS.bash} $ `));
-      prefix += theme.fg("accent", cmd);
+      prefix += theme.fg("accent", args.command);
       if (args.timeout) prefix += theme.fg("dim", ` (timeout: ${args.timeout}s)`);
       return new Text(prefix, 0, 0);
     },
-    renderResult(result, { expanded, isPartial }, theme, context) {
+    renderResult(result, { expanded, isPartial }, theme, _context) {
       if (isPartial) return EMPTY;
 
       const details = result.details as BashToolDetails | undefined;

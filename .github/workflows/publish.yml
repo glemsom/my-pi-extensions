@@ -40,7 +40,7 @@ jobs:
         run: npm install --workspaces=false
 
       - name: Publish to npm
-        run: npm publish -w packages/${{ steps.meta.outputs.pkg_dir }}
+        run: npm publish --access public -w packages/${{ steps.meta.outputs.pkg_dir }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

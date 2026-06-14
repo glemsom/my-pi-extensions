@@ -2,15 +2,13 @@
  * pi-my-look — Modern UI polish for pi
  *
  * Slick modern UI polish for the pi coding agent:
- *   - Branded splash on session start (typewriter reveal + fade-out)
- *   - Tool icons (🔍 read · 📝 write · ✏️ edit · ⚡ bash) inline in chat
+ *   - Tool rendering with inline icons and diff/result previews
+ *   - Knight Rider animated working indicator
  *
  * Install: pi install npm:@glemsom/pi-my-look
- *
- * Customize: edit ICONS, TAGLINE, SPLASH_COLORS, BOX_WIDTH below.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   createBashTool,
   createEditTool,
@@ -27,8 +25,6 @@ import { Text } from "@earendil-works/pi-tui";
 // CONFIG — tweak these to taste
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TAGLINE = "pi-my-look";
-
 function capitalize(str: string): string {
   if (!str) return "";
   return str.charAt(0).toUpperCase() + str.slice(1);
@@ -44,61 +40,16 @@ function getDot(context: any, theme: any): string {
   return theme.fg("success", "●");
 }
 
-// Splash ANSI gradient color stops (top → bottom).
-// DimLevel shrinks each channel for fade-out transitions.
-const SPLASH_COLORS: readonly number[][] = [
-  [255, 120, 200],
-  [220, 140, 240],
-  [180, 160, 255],
-  [140, 200, 255],
-  [100, 220, 220],
-  [120, 255, 180],
-  [200, 255, 120],
-];
-
-const BOX_WIDTH = 44; // inner content width between borders
-
-/** Build the 7-line splash widget dynamically.
- *  tagline  — partial or full tag (empty = not yet revealed)
- *  dimLevel — 1.0 = full brightness, 0.0 = gone (fade steps)
- *  cursor   — show blinking block-cursor after tagline */
-function buildSplashLines(tagline: string, dimLevel: number, cursor: boolean): string[] {
-  const d = (i: number): string => {
-    const [r, g, b] = SPLASH_COLORS[i]!;
-    return `\x1b[38;2;${Math.round(r * dimLevel)};${Math.round(g * dimLevel)};${Math.round(b * dimLevel)}m`;
-  };
-
-  const tag = tagline || " ";
-  const cur = cursor ? d(4) + "\x1b[5m▊\x1b[25m" : "";
-  const pad = BOX_WIDTH - 9 - tag.length - 2 - (cursor ? 1 : 0);
-
-  return [
-    d(0) + "  ╭" + "─".repeat(BOX_WIDTH) + "╮\x1b[0m",
-    d(1) + "  │" + " ".repeat(BOX_WIDTH) + "│\x1b[0m",
-    d(2) + "  │    \x1b[1mπ  AGENT\x1b[0m" + d(2) + " ".repeat(BOX_WIDTH - 12) + "│\x1b[0m",
-    d(3) + "  │" + " ".repeat(BOX_WIDTH) + "│\x1b[0m",
-    d(4) + "  │       \x1b[3m· \x1b[1m" + tag + "\x1b[0m" + d(4) + "\x1b[3m ·\x1b[0m" + cur + d(4) + " ".repeat(Math.max(0, pad)) + "│\x1b[0m",
-    d(5) + "  │" + " ".repeat(BOX_WIDTH) + "│\x1b[0m",
-    d(6) + "  ╰" + "─".repeat(BOX_WIDTH) + "╯\x1b[0m",
-  ];
-}
-
-// Persistent brand widget above editor (empty = no static text).
-const BRAND_WIDGET: string[] = [];
-
-const WIDGET_KEY = "pi-modern-brand";
-const SPLASH_DURATION_MS = 2500;
-
-// ─── WORKING INDICATOR: Knight Rider amber scan on "thinking…" ────────
+// ─── WORKING INDICATOR: Knight Rider cyan scan on "Working..." ────────
 
 const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const THINKING_TEXT = "thinking…";
+const THINKING_TEXT = "Working...";
 const KR_PEAK = { r: 0, g: 255, b: 255 };     // bright cyan (hot spot)
 const KR_BASE = { r: 20, g: 60, b: 70 };      // dark teal (cold / off state)
 
 /**
  * Build combined frames: braille spinner + Knight Rider scanning text.
- * Each frame shifts the amber "hot spot" across the thinking label — the glow
+ * Each frame shifts the cyan "hot spot" across the working label — the glow
  * sweeps left-to-right and wraps, just like the KITT scanner.  Characters far
  * from the hot spot fade toward dark blue instead of black so they stay readable.
  */
@@ -106,21 +57,58 @@ function knightRiderThinkingFrames(): string[] {
   const textLen = THINKING_TEXT.length;
   const frameCount = BRAILLE_FRAMES.length;
 
-  return BRAILLE_FRAMES.map((braille, i) => {
-    // Map frame index → scan position along the text (linear sweep)
-    const scanPos = (i / (frameCount - 1)) * (textLen - 1);
+  // Make a bidirectional sweep (forward then backward) for a smoother Knight Rider effect
+  const sweepLen = frameCount * 2 - 2; // e.g. 10 -> 18 frames
+  const frames: string[] = [];
 
+  // Gaussian width (controls how wide/soft the glow is)
+  const sigma = 1.0;
+
+  for (let i = 0; i < sweepLen; i++) {
+    // forwardIdx goes 0..frameCount-1 then back to 0
+    const forwardIdx = i < frameCount ? i : sweepLen - i;
+
+    // Map frame index → scan position along the text (linear sweep across the label)
+    const scanPos = (forwardIdx / (frameCount - 1)) * (textLen - 1);
+
+    // Colorize and optionally bold the braille spinner glyph so it feels part of the same animation
+    const braille = BRAILLE_FRAMES[forwardIdx];
+    const braillePos = (forwardIdx / (frameCount - 1)) * (textLen - 1);
+    const brailleDist = Math.abs(braillePos - scanPos);
+    // Gaussian falloff for a smooth soft glow
+    const brailleT = Math.exp(- (brailleDist * brailleDist) / (2 * sigma * sigma));
+    const br = Math.round(KR_BASE.r + (KR_PEAK.r - KR_BASE.r) * brailleT);
+    const bg = Math.round(KR_BASE.g + (KR_PEAK.g - KR_BASE.g) * brailleT);
+    const bb = Math.round(KR_BASE.b + (KR_PEAK.b - KR_BASE.b) * brailleT);
+
+    const brailleBold = brailleT > 0.85; // hottest braille frames get bold
+    const coloredBraille = brailleBold
+      ? `\x1b[1m\x1b[38;2;${br};${bg};${bb}m${braille}\x1b[0m`
+      : `\x1b[38;2;${br};${bg};${bb}m${braille}\x1b[0m`;
+
+    // Build colored text; bold the single hottest character for extra emphasis
+    const hotIndex = Math.round(scanPos);
     let colored = "";
     for (let c = 0; c < textLen; c++) {
       const dist = Math.abs(c - scanPos);
-      const t = Math.max(0, 1 - dist / 2.5);  // 1 = hot spot, 0 = far away
+      // Gaussian falloff: softer, more natural glow than linear
+      const t = Math.exp(- (dist * dist) / (2 * sigma * sigma)); // 1 = hot spot, ->0 = far away
       const r = Math.round(KR_BASE.r + (KR_PEAK.r - KR_BASE.r) * t);
       const g = Math.round(KR_BASE.g + (KR_PEAK.g - KR_BASE.g) * t);
       const b = Math.round(KR_BASE.b + (KR_PEAK.b - KR_BASE.b) * t);
-      colored += `\x1b[38;2;${r};${g};${b}m${THINKING_TEXT[c]}\x1b[39m`;
+
+      if (c === hotIndex) {
+        // hottest char: bold + colored
+        colored += `\x1b[1m\x1b[38;2;${r};${g};${b}m${THINKING_TEXT[c]}\x1b[0m`;
+      } else {
+        colored += `\x1b[38;2;${r};${g};${b}m${THINKING_TEXT[c]}\x1b[0m`;
+      }
     }
-    return `${braille} ${colored}`;
-  });
+
+    frames.push(`${coloredBraille} ${colored}`);
+  }
+
+  return frames;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -130,98 +118,12 @@ function knightRiderThinkingFrames(): string[] {
 export default function (pi: ExtensionAPI) {
   const cwd = process.cwd();
 
-  // State
-  let splashTimer: ReturnType<typeof setTimeout> | null = null;
-  let splashActive = false;
-
-  // ─── SPLASH: typewriter reveal + fade-out exit ──────────────────────────
-
-  let typewriterTimer: ReturnType<typeof setInterval> | null = null;
-  let cursorTimer: ReturnType<typeof setInterval> | null = null;
-  let fadeTimer: ReturnType<typeof setInterval> | null = null;
-  let typewriterPos = 0;
-  let cursorVisible = true;
-  let typewriterDone = false;
-  let fadingOut = false;
-
-  function dismissSplash(ctx: ExtensionContext) {
-    if (!splashActive || fadingOut) return;
-    fadingOut = true;
-
-    // Kill all running animations
-    if (typewriterTimer) { clearInterval(typewriterTimer); typewriterTimer = null; }
-    if (cursorTimer) { clearInterval(cursorTimer); cursorTimer = null; }
-    if (splashTimer) { clearTimeout(splashTimer); splashTimer = null; }
-
-    // Fade out: 5 steps over ~300 ms
-    const fadeSteps = [1.0, 0.7, 0.45, 0.2, 0.0];
-    let step = 0;
-    const displayTag = typewriterDone ? TAGLINE : TAGLINE.slice(0, typewriterPos) || TAGLINE;
-
-    fadeTimer = setInterval(() => {
-      step++;
-      if (step >= fadeSteps.length) {
-        // Fully gone — tear down splash
-        if (fadeTimer) { clearInterval(fadeTimer); fadeTimer = null; }
-        splashActive = false;
-        fadingOut = false;
-        ctx.ui.setWidget(WIDGET_KEY, BRAND_WIDGET);
-        return;
-      }
-      ctx.ui.setWidget(WIDGET_KEY, buildSplashLines(displayTag, fadeSteps[step]!, false));
-    }, 75);
-  }
-
-  pi.on("session_start", async (event, ctx) => {
-    // Knight Rider amber scanning text on the thinking indicator
+  pi.on("session_start", async (_event, ctx) => {
+    // Knight Rider cyan scanning text on the working indicator
     ctx.ui.setWorkingIndicator({
       frames: knightRiderThinkingFrames(),
     });
     ctx.ui.setWorkingMessage("");
-
-    if (event.reason === "startup" || event.reason === "new") {
-      if (splashActive) dismissSplash(ctx);
-      splashActive = true;
-      typewriterPos = 0;
-      typewriterDone = false;
-      fadingOut = false;
-      cursorVisible = true;
-
-      // Render empty box (tagline not yet revealed)
-      ctx.ui.setWidget(WIDGET_KEY, buildSplashLines("", 1.0, true));
-      // Typewriter: reveal tagline char by char (~40 ms / char)
-      typewriterTimer = setInterval(() => {
-        typewriterPos++;
-        if (typewriterPos > TAGLINE.length) {
-          // Reveal complete — switch to cursor blink
-          clearInterval(typewriterTimer!);
-          typewriterTimer = null;
-          typewriterDone = true;
-
-          cursorTimer = setInterval(() => {
-            cursorVisible = !cursorVisible;
-            ctx.ui.setWidget(WIDGET_KEY, buildSplashLines(TAGLINE, 1.0, cursorVisible));
-          }, 400);
-          return;
-        }
-        ctx.ui.setWidget(WIDGET_KEY, buildSplashLines(TAGLINE.slice(0, typewriterPos), 1.0, true));
-      }, 40);
-
-      // Auto-dismiss after SPLASH_DURATION_MS
-      splashTimer = setTimeout(() => dismissSplash(ctx), SPLASH_DURATION_MS);
-    } else {
-      ctx.ui.setWidget(WIDGET_KEY, BRAND_WIDGET);
-    }
-  });
-
-  // User input → fast-forward typewriter then trigger fade-out
-  pi.on("input", async (_event, ctx) => {
-    if (!splashActive) return;
-    if (typewriterTimer) { clearInterval(typewriterTimer); typewriterTimer = null; }
-    if (cursorTimer) { clearInterval(cursorTimer); cursorTimer = null; }
-    typewriterPos = TAGLINE.length;
-    typewriterDone = true;
-    dismissSplash(ctx);
   });
 
   // ─── TOOL ICONS: override 4 built-ins ─────────────────────────────────────
@@ -493,13 +395,7 @@ export default function (pi: ExtensionAPI) {
 
   // ─── CLEANUP ──────────────────────────────────────────────────────────────
 
-  pi.on("session_shutdown", async (_event, ctx) => {
-    if (splashTimer) clearTimeout(splashTimer);
-    if (typewriterTimer) clearInterval(typewriterTimer);
-    if (cursorTimer) clearInterval(cursorTimer);
-    if (fadeTimer) clearInterval(fadeTimer);
-    splashActive = false;
-    fadingOut = false;
-    ctx.ui.setWidget(WIDGET_KEY, undefined);
+  pi.on("session_shutdown", async () => {
+    // no-op: nothing to tear down
   });
 }

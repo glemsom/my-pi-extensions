@@ -13,6 +13,7 @@
 # Used by setup.sh (to generate the init_hook) and the --update handler below.
 PI_BOX_PI_PKG="@earendil-works/pi-coding-agent"
 PI_BOX_CTX7_PKG="@dreki-gg/pi-context7"
+PI_BOX_MYLOOK_PKG="@glemsom/pi-my-look"
 
 _die() {
   echo "Error: $1" >&2
@@ -47,6 +48,8 @@ pi-box() {
     npm update -g "$PI_BOX_PI_PKG" || { _die "npm update -g $PI_BOX_PI_PKG failed.
   Check your network connection and npm registry access."; return 1; }
     pi install "npm:$PI_BOX_CTX7_PKG" || { _die "pi install npm:$PI_BOX_CTX7_PKG failed.
+  Check your network connection and that the pi binary is working (run: pi --version)."; return 1; }
+    pi install "npm:$PI_BOX_MYLOOK_PKG" || { _die "pi install npm:$PI_BOX_MYLOOK_PKG failed.
   Check your network connection and that the pi binary is working (run: pi --version)."; return 1; }
     return
   fi

@@ -1,0 +1,5 @@
+{
+  "name": "my-pi-extensions",
+  "private": true,
+  "workspaces": ["packages/*"]
+}

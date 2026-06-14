@@ -1,0 +1,53 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "@glemsom/*@*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # needed for GitHub Release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Extract package and version from tag
+        id: meta
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          # TAG = @glemsom/my-pi-look@0.1.0
+          VERSION="${TAG##*@}"
+          FULL="${TAG#@}"
+          PKG_SCOPE_PATH="${FULL%@*}"
+          PKG_DIR="${PKG_SCOPE_PATH#*/}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "pkg_dir=${PKG_DIR}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Bump version in package.json
+        run: |
+          cd packages/${{ steps.meta.outputs.pkg_dir }}
+          npm version ${{ steps.meta.outputs.version }} --no-git-tag-version
+
+      - name: Install dependencies
+        run: npm install --workspaces=false
+
+      - name: Publish to npm
+        run: npm publish -w packages/${{ steps.meta.outputs.pkg_dir }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.meta.outputs.tag }}
+          tag_name: ${{ steps.meta.outputs.tag }}
+          generate_release_notes: true

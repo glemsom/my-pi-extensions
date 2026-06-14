@@ -1,6 +1,6 @@
 # pi-my-look
 
-Version 0.1.9
+Version 0.1.10
 
 Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent).
 
@@ -12,6 +12,9 @@ Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-
 - 🚗 Knight Rider cyan scanning text on the "Working..." indicator — a glowing hot spot sweeps across the label while a braille spinner animates
 
 ## Changelog
+
+- 0.1.10 (2026-06-14)
+  - Add pulsating dot animation (○ ◔ ◐ ◕ ●) for in-progress tool calls.
 
 - 0.1.9 (2026-06-14)
   - Fix docs: describe Knight Rider color as cyan (not amber).

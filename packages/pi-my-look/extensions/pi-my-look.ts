@@ -30,9 +30,17 @@ function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
+// ─── PULSATING DOT ──────────────────────────────────────────────────────────
+// Unicode circles ordered from emptiest → fullest → emptiest to simulate
+// a breathing/pulsating indicator while a tool-call is in progress.
+
+const PULSE_FRAMES = ["○", "◔", "◐", "◕", "●", "◕", "◐", "◔"];
+const PULSE_INTERVAL_MS = 140;
+
 function getDot(context: any, theme: any): string {
   if (context?.isPartial) {
-    return theme.fg("warning", "●");
+    const frame = Math.floor(Date.now() / PULSE_INTERVAL_MS) % PULSE_FRAMES.length;
+    return theme.fg("warning", PULSE_FRAMES[frame]);
   }
   if (context?.isError) {
     return theme.fg("error", "●");

@@ -394,8 +394,18 @@ export default function (pi: ExtensionAPI) {
     renderCall(args, theme, context) {
       const dot = getDot(context, theme);
       const title = theme.fg("toolTitle", theme.bold(capitalize("bash")));
-      const cmd = theme.fg("accent", args.command);
-      let text = `${dot} ${title}(${cmd})`;
+      const lines = args.command.split('\n').filter((l) => l.trim());
+
+      let cmd: string;
+      if (lines.length > 1) {
+        const indent = " ".repeat(7); // "● Bash(" is 7 characters
+        cmd = lines.map((line, i) => i === 0 ? line : indent + line).join('\n');
+      } else {
+        cmd = args.command;
+      }
+
+      const coloredCmd = theme.fg("accent", cmd);
+      let text = `${dot} ${title}(${coloredCmd})`;
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }

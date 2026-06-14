@@ -5,6 +5,7 @@ Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-
 - 🎨 Branded splash on session start (typewriter reveal + fade-out)
 - Clean flat tool call lines starting with a status dot `●` (green for success, red for error, yellow for executing/partial) instead of default boxed backgrounds
 - Capitalized tool names with arguments in parentheses (e.g., `Edit(/path/to/file)` or `Bash(command)`)
+- Multi-line bash commands are indented for readability, with continuation lines aligned under the first line
 - Execution results hidden by default when collapsed with a `(ctrl+o to expand)` hint, and fully visible (preview/stats) when expanded
 
 ## Install

@@ -185,9 +185,10 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // Edit — diff stats are stored in shared context.state so renderCall can
-  // display them inline on the same line, without a separate result row.
-  type EditState = { additions?: number; removals?: number };
+  // Edit — diff stats computed once in execute, bridged to renderCall
+  // via a module-level toolCallId → stats map to avoid renderResult calling
+  // context.invalidate() (which is fragile and risks render loops).
+  const editDiffStats = new Map<string, { additions: number; removals: number }>();
   const originalEdit = createEditTool(cwd);
   pi.registerTool({
     name: "edit",
@@ -196,7 +197,23 @@ export default function (pi: ExtensionAPI) {
     parameters: originalEdit.parameters,
     renderShell: "self",
     async execute(toolCallId, params, signal, onUpdate) {
-      return originalEdit.execute(toolCallId, params, signal, onUpdate);
+      const result = await originalEdit.execute(toolCallId, params, signal, onUpdate);
+
+      // Compute diff stats immediately from the result and store them
+      // keyed by toolCallId so renderCall can read them without invalidation.
+      const rawDetails = result.details as EditToolDetails | undefined;
+      if (rawDetails?.diff) {
+        const diffLines = rawDetails.diff.split("\n");
+        let additions = 0;
+        let removals = 0;
+        for (const line of diffLines) {
+          if (line.startsWith("+") && !line.startsWith("+++")) additions++;
+          if (line.startsWith("-") && !line.startsWith("---")) removals++;
+        }
+        editDiffStats.set(toolCallId, { additions, removals });
+      }
+
+      return result;
     },
     renderCall(args, theme, context) {
       const dot = getDot(context, theme);
@@ -216,12 +233,12 @@ export default function (pi: ExtensionAPI) {
 
       let text = `${dot} ${icon} ${title}(${path})`;
 
-      // Inline diff stats once the result is available via shared state
-      const state = context.state as EditState;
-      if (!context.isPartial && state.additions !== undefined && state.removals !== undefined) {
-        text += " " + theme.fg("success", `+${state.additions}`);
+      // Inline diff stats — read from the bridge map keyed by toolCallId
+      const stats = editDiffStats.get(context.toolCallId);
+      if (!context.isPartial && stats) {
+        text += " " + theme.fg("success", `+${stats.additions}`);
         text += theme.fg("dim", "/");
-        text += theme.fg("error", `-${state.removals}`);
+        text += theme.fg("error", `-${stats.removals}`);
         if (!context.expanded) {
           text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
         }
@@ -231,7 +248,7 @@ export default function (pi: ExtensionAPI) {
 
       return new Text(text, 0, 0);
     },
-    renderResult(result, { expanded, isPartial }, theme, context) {
+    renderResult(result, { expanded, isPartial }, theme, _context) {
       if (isPartial) return new Text(theme.fg("warning", "Editing..."), 0, 0);
 
       const details = result.details as EditToolDetails | undefined;
@@ -245,22 +262,7 @@ export default function (pi: ExtensionAPI) {
         return new Text(theme.fg("success", "Applied"), 0, 0);
       }
 
-      // Count additions and removals from the diff
       const diffLines = details.diff.split("\n");
-      let additions = 0;
-      let removals = 0;
-      for (const line of diffLines) {
-        if (line.startsWith("+") && !line.startsWith("+++")) additions++;
-        if (line.startsWith("-") && !line.startsWith("---")) removals++;
-      }
-
-      // Store stats in shared state and re-render the call line to show them inline
-      const state = context.state as EditState;
-      if (state.additions !== additions || state.removals !== removals) {
-        state.additions = additions;
-        state.removals = removals;
-        context.invalidate();
-      }
 
       // Collapsed: stats are shown inline on the call line — nothing needed here
       if (!expanded) return new Text("", 0, 0);

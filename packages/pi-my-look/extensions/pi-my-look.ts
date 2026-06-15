@@ -23,13 +23,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 
-// ─── HELPERS ────────────────────────────────────────────────────────────────
-
-function capitalize(str: string): string {
-  if (!str) return "";
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
 // ─── TOOL ICON MAP ──────────────────────────────────────────────────────────
 // Single source of truth for tool icons. When a new tool needs icon support,
 // add its entry here — the generic renderer loop picks it up automatically.
@@ -38,7 +31,7 @@ const TOOL_ICONS: Record<string, string> = {
   read: "🔍",
   write: "💾",
   edit: "✏️",
-  bash: "❯",
+  bash: "💻",
   browser: "🌐",
   search: "🔎",
   grep: "🔎",
@@ -105,8 +98,6 @@ function createGenericToolRenderer(
     renderCall(args: any, theme: any, context: any) {
       const dot = getDot(context, theme);
       const iconColor = theme.fg("muted", icon);
-      const title = theme.fg("toolTitle", theme.bold(capitalize(toolName)));
-
       // Pick the most relevant argument to display inline
       let argDisplay = "";
       if (args?.path) {
@@ -125,14 +116,14 @@ function createGenericToolRenderer(
         argDisplay = theme.fg("accent", thought);
       }
 
-      let text = `${dot} ${iconColor} ${title}(${argDisplay})`;
+      let text = `${dot}  ${iconColor} (${argDisplay})`;
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }
       return new Text(text, 0, 0);
     },
     renderResult(result: any, { expanded, isPartial }: { expanded: boolean; isPartial: boolean }, theme: any, _context: any) {
-      if (isPartial) return new Text(theme.fg("warning", `${capitalize(toolName)}...`), 0, 0);
+      if (isPartial) return new Text(theme.fg("warning", `${toolName}...`), 0, 0);
 
       const content = result.content?.[0];
       if (content?.type === "text" && content.text.startsWith("Error")) {
@@ -191,7 +182,6 @@ export default function (pi: ExtensionAPI) {
     renderCall(args, theme, context) {
       const dot = getDot(context, theme);
       const icon = theme.fg("muted", TOOL_ICONS.read);
-      const title = theme.fg("toolTitle", theme.bold(capitalize("read")));
 
       const pathStr = args.path;
       let path = renderPath(pathStr, theme);
@@ -204,7 +194,7 @@ export default function (pi: ExtensionAPI) {
         range = theme.fg("muted", `:${start}${end !== undefined ? `-${end}` : ""}`);
       }
 
-      let text = `${dot} ${icon} ${title}(${path}${range})`;
+      let text = `${dot}  ${icon} (${path}${range})`;
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }
@@ -270,11 +260,10 @@ export default function (pi: ExtensionAPI) {
     renderCall(args, theme, context) {
       const dot = getDot(context, theme);
       const icon = theme.fg("muted", TOOL_ICONS.write);
-      const title = theme.fg("toolTitle", theme.bold(capitalize("write")));
 
       const path = renderPath(args.path, theme);
 
-      let text = `${dot} ${icon} ${title}(${path})`;
+      let text = `${dot}  ${icon} (${path})`;
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }
@@ -324,11 +313,10 @@ export default function (pi: ExtensionAPI) {
     renderCall(args, theme, context) {
       const dot = getDot(context, theme);
       const icon = theme.fg("muted", TOOL_ICONS.edit);
-      const title = theme.fg("toolTitle", theme.bold(capitalize("edit")));
 
       const path = renderPath(args.path, theme);
 
-      let text = `${dot} ${icon} ${title}(${path})`;
+      let text = `${dot}  ${icon} (${path})`;
 
       // Inline diff stats — read from the bridge map keyed by toolCallId
       const stats = editDiffStats.get(context.toolCallId);
@@ -396,15 +384,14 @@ export default function (pi: ExtensionAPI) {
     renderCall(args, theme, context) {
       const dot = getDot(context, theme);
       const icon = theme.fg("muted", TOOL_ICONS.bash);
-      const title = theme.fg("toolTitle", theme.bold(capitalize("bash")));
       const lines = args.command.split('\n').filter((l: string) => l.trim());
 
       let cmd: string;
       if (lines.length > 1) {
         // Dynamically compute indent from the rendered prefix parts
-        // (dot + " ❯ " + title + "(") so it adapts if icon or label changes.
+        // (dot + " ❯ " + icon + "(") so it adapts if icon or label changes.
         // All pulse frames and ● are single-width, so "●" is a safe representative.
-        const rawPrefix = "● ❯ " + capitalize("bash") + "(";
+        const rawPrefix = "●  💻 (";
         const indent = " ".repeat(rawPrefix.length);
         cmd = lines.map((line, i) => i === 0 ? line : indent + line).join('\n');
       } else {
@@ -412,7 +399,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       const coloredCmd = theme.fg("accent", cmd);
-      let text = `${dot} ${icon} ${title}(${coloredCmd})`;
+      let text = `${dot}  ${icon} (${coloredCmd})`;
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }

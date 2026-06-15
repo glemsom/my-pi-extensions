@@ -4,13 +4,14 @@ Version 0.1.12
 
 Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent).
 
+## Features
 
-- Clean flat tool call lines starting with a status dot `●` (green for success, red for error, yellow for executing/partial)
-- **Tool Icons:** Visual symbols for each action (🔍 `Read`, 💾 `Write`, ✏️ `Edit`, ❯ `Bash`) for faster recognition
-- **Semantic Highlighting:** Paths are rendered with dimmed directories and accented filenames to reduce visual noise
-- Multi-line bash commands are indented for readability, with continuation lines aligned under the first line
-- Execution results hidden by default when collapsed with a `(ctrl+o to expand)` hint, and fully visible (preview/stats) when expanded
-- 🚗 Knight Rider cyan scanning text on the "Working..." indicator — a glowing hot spot sweeps across the label while a braille spinner animates
+- **Pulsating Status Dot:** Animated dot (○ ◔ ◐ ◕ ●) indicating tool execution state (yellow for in-progress, green for success, red for error).
+- **Tool Icons:** Visual unicode symbols for each action (🔍 `Read`, 💾 `Write`, ✏️ `Edit`, ❯ `Bash`) for faster recognition.
+- **Semantic Path Highlighting:** File paths are rendered with dimmed directories and accented filenames to reduce visual noise.
+- **Smart Formatting:** Multi-line bash commands are automatically indented for readability.
+- **Inline Diff Stats:** The `edit` tool displays addition/removal counts (e.g., `+5 / -2`) directly on the collapsed call line.
+- **Collapsible Execution Results:** Output is hidden by default when collapsed, showing a keyboard hint to expand. When expanded, it previews content (e.g., file lines, bash output, or full colored diffs for edits).
 
 ## Changelog
 
@@ -25,9 +26,8 @@ Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-
   - Add pulsating dot animation (○ ◔ ◐ ◕ ●) for in-progress tool calls.
 
 - 0.1.9 (2026-06-14)
-  - Fix docs: describe Knight Rider color as cyan (not amber).
   - Remove startup splash and associated timers.
-  - Improve the working indicator: bidirectional sweep, Gaussian glow, and integrated braille spinner.
+  - Simplify working indicator to pulsating dot on tool call lines.
 
 ## Install
 
@@ -37,7 +37,7 @@ pi install npm:@glemsom/pi-my-look
 
 ## Customize
 
-Edit the `KR_PEAK` and `KR_BASE` constants in packages/pi-my-look/extensions/pi-my-look.ts to change the scanning and base colors. For npm installs you can override with a local copy or a fork.
+Edit the tool rendering logic in `packages/pi-my-look/extensions/pi-my-look.ts` to change icons, colors, or formatting. For npm installs, you can override with a local copy or a fork.
 
 ## License
 

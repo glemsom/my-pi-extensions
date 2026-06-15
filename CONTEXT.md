@@ -44,8 +44,7 @@ _Avoid_: Plugin, addon
 - **Keyword**: All packages include `pi-package` in their npm keywords for gallery discoverability.
 - **Granularity**: Each directory in `packages/` is one independently versioned npm package.
 - **Package structure**: Convention-based. Pi auto-discovers from `extensions/`, `skills/`, `prompts/`, `themes/` directories. No explicit `pi` manifest in `package.json` unless non-standard paths are needed. CLI tools use standard npm `bin` entries.
-- **Publishing**: Tag-based. Push a tag of the form `@glemsom/<pkg>@<version>` to trigger CI to publish that specific package.
-  Example: `@glemsom/pi-my-look@0.1.6`
+- **Publishing**: Tag-based. Pushing a tag of the form `@glemsom/<pkg>@<version>` triggers CI to publish that specific package.
 - **Tools**: One tool per subdirectory under `tools/`. Not published to npm.
 - **Cross-package dependencies**: Start strictly independent. If shared code is needed later, npm workspaces inter-package deps are available (`@glemsom/pi-shared` with `"*"` version).
 - **Root workspace**: npm workspaces at root (`"workspaces": ["packages/*"]`). Development convenience only — each package publishes independently.

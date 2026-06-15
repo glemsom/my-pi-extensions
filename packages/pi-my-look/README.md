@@ -1,12 +1,11 @@
 # pi-my-look
 
-Version 0.1.13
+Version 0.1.12
 
 Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent).
 
 ## Features
 
-- **Powerline Input Frame:** Custom footer with rounded top border (`╭─ ~/path (branch) ─╮`) showing working directory and git branch. The input editor has a matching rounded bottom border (`╰─ ... ─╯`) for a cohesive frame appearance.
 - **Pulsating Status Dot:** Animated dot (○ ◔ ◐ ◕ ●) indicating tool execution state (yellow for in-progress, green for success, red for error).
 - **Tool Icons:** Visual unicode symbols for each action (🔍 `Read`, 💾 `Write`, ✏️ `Edit`, ❯ `Bash`) for faster recognition.
 - **Semantic Path Highlighting:** File paths are rendered with dimmed directories and accented filenames to reduce visual noise.
@@ -15,11 +14,6 @@ Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-
 - **Collapsible Execution Results:** Output is hidden by default when collapsed, showing a keyboard hint to expand. When expanded, it previews content (e.g., file lines, bash output, or full colored diffs for edits).
 
 ## Changelog
-
-- 0.1.13 (2026-06-15)
-  - Add powerline input frame with path, git branch, and rounded borders.
-  - Custom footer: `╭─ ~/path (branch) ─╮` with live git branch updates.
-  - Custom editor: skip top border (footer provides it), rounded bottom border `╰─ ... ─╯`.
 
 - 0.1.12 (2026-06-14)
   - Add tool-specific unicode iconography (🔍, 💾, ✏️, ❯).

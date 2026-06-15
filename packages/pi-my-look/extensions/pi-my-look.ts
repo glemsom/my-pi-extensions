@@ -3,7 +3,6 @@
  *
  * Slick modern UI polish for the pi coding agent:
  *   - Tool rendering with inline icons and diff/result previews
- *   - Powerline input frame with path, git status, and rounded borders
  *
  * Install: pi install npm:@glemsom/pi-my-look
  */
@@ -18,11 +17,8 @@ import {
   type BashToolDetails,
   type EditToolDetails,
   type ReadToolDetails,
-  CustomEditor,
 } from "@earendil-works/pi-coding-agent";
-import { Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { Component, TUI, EditorTheme } from "@earendil-works/pi-tui";
-import type { KeybindingsManager, ReadonlyFooterDataProvider, Theme } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 
 function capitalize(str: string): string {
   if (!str) return "";
@@ -45,153 +41,6 @@ function getDot(context: any, theme: any): string {
     return theme.fg("error", "●");
   }
   return theme.fg("success", "●");
-}
-
-// ─── POWERLINE FRAME ────────────────────────────────────────────────────────
-//
-// Custom footer with rounded top border showing path + git branch,
-// and a custom editor with rounded bottom border (╰─ ... ─╯).
-// Together they form a powerline-style input frame.
-
-function formatCwd(cwd: string): string {
-  const home = process.env.HOME;
-  if (home && cwd.startsWith(home)) {
-    return `~${cwd.slice(home.length)}`;
-  }
-  return cwd;
-}
-
-/**
- * Fit left and right content into a border line of given width.
- * Shrinks left/right content when terminal is narrow.
- */
-function fitBorder(
-  left: string,
-  right: string,
-  width: number,
-  border: (text: string) => string,
-  fill: (text: string) => string = border,
-): string {
-  if (width <= 0) return "";
-  if (width === 1) return border("─");
-
-  let leftText = left;
-  let rightText = right;
-  const fixedWidth = 2;
-  const minimumGap = 3;
-
-  while (
-    fixedWidth + visibleWidth(leftText) + visibleWidth(rightText) + minimumGap > width &&
-    visibleWidth(rightText) > 0
-  ) {
-    rightText = truncateToWidth(rightText, Math.max(0, visibleWidth(rightText) - 1), "");
-  }
-  while (
-    fixedWidth + visibleWidth(leftText) + visibleWidth(rightText) + minimumGap > width &&
-    visibleWidth(leftText) > 0
-  ) {
-    leftText = truncateToWidth(leftText, Math.max(0, visibleWidth(leftText) - 1), "");
-  }
-
-  const gapWidth = Math.max(0, width - fixedWidth - visibleWidth(leftText) - visibleWidth(rightText));
-  return `${border("─")}${leftText}${fill("─".repeat(gapWidth))}${rightText}${border("─")}`;
-}
-
-/** Footer component: renders ╭─ ~/path (branch) ─╮ */
-class PowerlineFooter implements Component {
-  private tui: TUI;
-  private theme: Theme;
-  private footerData: ReadonlyFooterDataProvider;
-  private cwd: string;
-  private disposeBranchWatch: (() => void) | null = null;
-
-  constructor(
-    tui: TUI,
-    theme: Theme,
-    footerData: ReadonlyFooterDataProvider,
-    cwd: string,
-  ) {
-    this.tui = tui;
-    this.theme = theme;
-    this.footerData = footerData;
-    this.cwd = cwd;
-
-    // Re-render when git branch changes
-    this.disposeBranchWatch = footerData.onBranchChange(() => {
-      this.tui.requestRender();
-    });
-  }
-
-  render(width: number): string[] {
-    const muted = (s: string) => this.theme.fg("muted", s);
-    const accent = (s: string) => this.theme.fg("accent", s);
-    const warning = (s: string) => this.theme.fg("warning", s);
-
-    const path = accent(formatCwd(this.cwd));
-    const branch = this.footerData.getGitBranch();
-    const branchStr = branch
-      ? muted("(") + warning(branch) + muted(")")
-      : "";
-
-    const leftLabel = path;
-    const rightLabel = branchStr;
-
-    const border = (s: string) => muted(s);
-    const result = fitBorder(leftLabel, rightLabel, width, border, border);
-    // Replace the leading ─ with ╭─ and trailing ─ with ─╮
-    // fitBorder returns ─<left><gap><right>─, so swap the outer ─ for ╭ and ╮
-    const line = `╭${result.slice(1, -1)}╮`;
-    return [line];
-  }
-
-  invalidate(): void {
-    // no cached state
-  }
-
-  dispose(): void {
-    this.disposeBranchWatch?.();
-  }
-}
-
-/** Custom editor: skips the top border, uses rounded bottom border ╰─ ... ─╯ */
-class RoundedEditor extends CustomEditor {
-  constructor(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) {
-    super(tui, theme, keybindings);
-  }
-
-  render(width: number): string[] {
-    const lines = super.render(width);
-    if (lines.length < 2) return lines;
-
-    // Remove the top border line — the footer provides it
-    lines.shift();
-
-    // Transform the bottom border to rounded corners
-    const lastIdx = lines.length - 1;
-    const last = lines[lastIdx];
-
-    // The last line is either a pure ─ border or a scroll indicator
-    // Check if it's a scroll indicator (contains ↓)
-    if (last.includes("↓")) {
-      // Keep scroll indicator for content below, but make rounded
-      // Scroll indicator looks like: ─── ↓ N more ────
-      // Replace outer ─ chars with ╰/╯
-      const firstNonBorder = last.search(/[^─]/);
-      const lastNonBorder = last.length - 1 - last.split("").reverse().join("").search(/[^─]/);
-      if (firstNonBorder >= 1 && lastNonBorder < last.length - 1) {
-        lines[lastIdx] =
-          this.borderColor("╰") +
-          last.slice(1, last.length - 1) +
-          this.borderColor("╯");
-      }
-      // If can't parse cleanly, leave as-is
-    } else {
-      // Pure bottom border: replace with rounded corners
-      lines[lastIdx] = this.borderColor("╰") + this.borderColor("─".repeat(width - 2)) + this.borderColor("╯");
-    }
-
-    return lines;
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -496,26 +345,9 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // ─── POWERLINE FRAME: footer + editor ────────────────────────────────────
-
-  let editorSet = false;
-
-  pi.on("session_start", (_event, ctx) => {
-    // Set the powerline footer with path and git branch
-    ctx.ui.setFooter((tui, theme, footerData) => {
-      return new PowerlineFooter(tui, theme, footerData, ctx.cwd);
-    });
-
-    // Set the custom editor with rounded bottom border (only once)
-    if (!editorSet) {
-      ctx.ui.setEditorComponent((tui, theme, keybindings) => {
-        return new RoundedEditor(tui, theme, keybindings);
-      });
-      editorSet = true;
-    }
-  });
+  // ─── CLEANUP ──────────────────────────────────────────────────────────────
 
   pi.on("session_shutdown", async () => {
-    // no-op
+    // no-op: nothing to tear down
   });
 }

@@ -305,7 +305,11 @@ export default function (pi: ExtensionAPI) {
 
       let cmd: string;
       if (lines.length > 1) {
-        const indent = " ".repeat(9); // "● ❯ Bash(" is 9 characters
+        // Dynamically compute indent from the rendered prefix parts
+        // (dot + " ❯ " + title + "(") so it adapts if icon or label changes.
+        // All pulse frames and ● are single-width, so "●" is a safe representative.
+        const rawPrefix = "● ❯ " + capitalize("bash") + "(";
+        const indent = " ".repeat(rawPrefix.length);
         cmd = lines.map((line, i) => i === 0 ? line : indent + line).join('\n');
       } else {
         cmd = args.command;

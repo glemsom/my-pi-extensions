@@ -1,6 +1,6 @@
 {
   "name": "@glemsom/pi-my-look",
-  "version": "0.1.17",
+  "version": "0.2.0",
   "description": "Modern UI polish for pi — branded splash, tool icons, status pulse, custom working indicator",
   "keywords": ["pi-package"],
   "license": "MIT",

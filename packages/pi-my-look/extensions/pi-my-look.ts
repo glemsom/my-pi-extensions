@@ -2,7 +2,12 @@
  * pi-my-look — Modern UI polish for pi
  *
  * Slick modern UI polish for the pi coding agent:
- *   - Tool rendering with inline icons and diff/result previews
+ *   - Pulse dot (●) with theme color cycling for in-progress, success, error
+ *   - Emoji icons for read, write, edit, bash, grep, find, ls (+ more via TOOL_ICONS map)
+ *   - Semantic path highlighting (dimmed dirs, accented filenames)
+ *   - Inline edit diff stats (+N / -M)
+ *   - Collapsible result previews with keyboard hint
+ *   - Generic tool renderer handles grep, find, ls and more
  *
  * Install: pi install npm:@glemsom/pi-my-look
  */

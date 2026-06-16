@@ -7,7 +7,7 @@
  * Install: pi install npm:@glemsom/pi-my-look
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ThemeColor } from "@earendil-works/pi-coding-agent";
 import {
   createBashTool,
   createEditTool,
@@ -47,16 +47,16 @@ const TOOL_ICONS: Record<string, string> = {
 const CUSTOM_RENDERED_TOOLS = new Set(["read", "write", "edit", "bash"]);
 
 // ─── PULSATING DOT ──────────────────────────────────────────────────────────
-// Unicode circles ordered from emptiest → fullest → emptiest to simulate
-// a breathing/pulsating indicator while a tool-call is in progress.
+// Single ● that cycles through theme colors to show activity.
+// More consistent across terminals than swapping unicode glyphs.
 
-const PULSE_FRAMES = ["○", "◔", "◐", "◕", "●", "◕", "◐", "◔"];
-const PULSE_INTERVAL_MS = 140;
+const PULSE_COLORS: ThemeColor[] = ["muted", "accent", "warning", "accent", "muted", "dim"];
+const PULSE_INTERVAL_MS = 180;
 
 function getDot(context: any, theme: any): string {
   if (context?.isPartial) {
-    const frame = Math.floor(Date.now() / PULSE_INTERVAL_MS) % PULSE_FRAMES.length;
-    return theme.fg("warning", PULSE_FRAMES[frame]);
+    const frame = Math.floor(Date.now() / PULSE_INTERVAL_MS) % PULSE_COLORS.length;
+    return theme.fg(PULSE_COLORS[frame], "●");
   }
   if (context?.isError) {
     return theme.fg("error", "●");

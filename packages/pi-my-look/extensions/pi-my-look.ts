@@ -74,15 +74,15 @@ const CUSTOM_RENDERED_TOOLS = new Set(["read", "write", "edit", "bash"]);
 const PULSE_COLORS: ThemeColor[] = ["muted", "accent", "warning", "accent", "muted", "dim"];
 const PULSE_INTERVAL_MS = 180;
 
-function getDot(context: any, theme: any): string {
+function getStatusIndicator(context: any, theme: any): string {
   if (context?.isPartial) {
     const frame = Math.floor(Date.now() / PULSE_INTERVAL_MS) % PULSE_COLORS.length;
     return theme.fg(PULSE_COLORS[frame], "●");
   }
   if (context?.isError) {
-    return theme.fg("error", "●");
+    return theme.fg("error", "✗");
   }
-  return theme.fg("success", "●");
+  return theme.fg("success", "✓");
 }
 
 // ─── PATH RENDERING ─────────────────────────────────────────────────────────
@@ -203,11 +203,11 @@ function createGenericToolRenderer(
       return originalTool.execute(toolCallId, params, signal, onUpdate);
     },
     renderCall(args: any, theme: any, context: any) {
-      const dot = getDot(context, theme);
+      const status = getStatusIndicator(context, theme);
       const icon = theme.fg(config.color, config.icon);
       const argDisplay = formatArguments(args, theme);
 
-      let text = `${dot}  ${icon} (${argDisplay})`;
+      let text = `${status}  ${icon} (${argDisplay})`;
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }
@@ -272,7 +272,7 @@ export default function (pi: ExtensionAPI) {
       return originalRead.execute(toolCallId, params, signal, onUpdate);
     },
     renderCall(args, theme, context) {
-      const dot = getDot(context, theme);
+      const status = getStatusIndicator(context, theme);
       const config = getToolConfig("read");
       const icon = theme.fg(config.color, config.icon);
 
@@ -287,7 +287,7 @@ export default function (pi: ExtensionAPI) {
         range = theme.fg("muted", `:${start}${end !== undefined ? `-${end}` : ""}`);
       }
 
-      let text = `${dot}  ${icon} (${path}${range})`;
+      let text = `${status}  ${icon} (${path}${range})`;
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }
@@ -351,13 +351,13 @@ export default function (pi: ExtensionAPI) {
       return originalWrite.execute(toolCallId, params, signal, onUpdate);
     },
     renderCall(args, theme, context) {
-      const dot = getDot(context, theme);
+      const status = getStatusIndicator(context, theme);
       const config = getToolConfig("write");
       const icon = theme.fg(config.color, config.icon);
 
       const path = renderPath(args.path, theme);
 
-      let text = `${dot}  ${icon} (${path})`;
+      let text = `${status}  ${icon} (${path})`;
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }
@@ -405,13 +405,13 @@ export default function (pi: ExtensionAPI) {
       return result;
     },
     renderCall(args, theme, context) {
-      const dot = getDot(context, theme);
+      const status = getStatusIndicator(context, theme);
       const config = getToolConfig("edit");
       const icon = theme.fg(config.color, config.icon);
 
       const path = renderPath(args.path, theme);
 
-      let text = `${dot}  ${icon} (${path})`;
+      let text = `${status}  ${icon} (${path})`;
 
       // Inline diff stats — read from the bridge map keyed by toolCallId
       const stats = editDiffStats.get(context.toolCallId);
@@ -477,14 +477,14 @@ export default function (pi: ExtensionAPI) {
       return originalBash.execute(toolCallId, params, signal, onUpdate);
     },
     renderCall(args, theme, context) {
-      const dot = getDot(context, theme);
+      const status = getStatusIndicator(context, theme);
       const config = getToolConfig("bash");
       const icon = theme.fg(config.color, config.icon);
       const lines = args.command.split('\n').filter((l: string) => l.trim());
 
       let cmd: string;
       if (lines.length > 1) {
-        const rawPrefix = `●  ${config.icon} (`;
+        const rawPrefix = `${status}  ${config.icon} (`;
         const indent = " ".repeat(rawPrefix.length);
         cmd = lines.map((line, i) => i === 0 ? line : indent + line).join('\n');
       } else {
@@ -492,7 +492,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       const coloredCmd = theme.fg("accent", cmd);
-      let text = `${dot}  ${icon} (${coloredCmd})`;
+      let text = `${status}  ${icon} (${coloredCmd})`;
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }

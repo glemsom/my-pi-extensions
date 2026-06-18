@@ -6,6 +6,8 @@
  *   - Emoji icons for any tool via TOOL_UI_CONFIG map with automatic fallback
  *   - Semantic path highlighting (dimmed dirs, accented filenames) via regex detection
  *   - Inline diff stats (+N / -M) for any tool output
+ *   - Bash exit code display (exit 0 / exit N) on collapsed call lines
+ *   - Stderr differentiation in expanded bash result view
  *   - Collapsible result previews with keyboard hint
  *   - Generic tool renderer handles ALL tools with polymorphic result parsing
  *   - Automatic styling for MCP and custom tools via DEFAULT_TOOL_CONFIG fallback
@@ -411,6 +413,11 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  // Bash — exit codes bridged from execute to renderCall/renderResult
+  // via a module-level toolCallId → exitCode map. Avoids parsing the error
+  // message text in renderResult, keeping exit code logic in one place.
+  const bashExitCodes = new Map<string, number>();
+
   // Edit — diff stats computed once in execute, bridged to renderCall
   // via a module-level toolCallId → stats map to avoid renderResult calling
   // context.invalidate() (which is fragile and risks render loops).
@@ -510,7 +517,18 @@ export default function (pi: ExtensionAPI) {
     parameters: originalBash.parameters,
     renderShell: "self",
     async execute(toolCallId, params, signal, onUpdate) {
-      return originalBash.execute(toolCallId, params, signal, onUpdate);
+      try {
+        const result = await originalBash.execute(toolCallId, params, signal, onUpdate);
+        // Success — exit code 0
+        bashExitCodes.set(toolCallId, 0);
+        return result;
+      } catch (err) {
+        // Extract exit code from the error message thrown by the built-in bash tool
+        const msg = err instanceof Error ? err.message : String(err);
+        const exitMatch = msg.match(/exit(?:ed with)? code (\d+)/i);
+        bashExitCodes.set(toolCallId, exitMatch ? parseInt(exitMatch[1], 10) : 1);
+        throw err;
+      }
     },
     renderCall(args, theme, context) {
       const status = getStatusIndicator(context, theme);
@@ -529,6 +547,17 @@ export default function (pi: ExtensionAPI) {
 
       const coloredCmd = theme.fg("accent", cmd);
       let text = `${status}  ${icon} (${coloredCmd})`;
+
+      // Show exit code after completion (not while running)
+      const exitCode = bashExitCodes.get(context.toolCallId);
+      if (!context.isPartial && exitCode !== undefined) {
+        if (exitCode === 0) {
+          text += theme.fg("muted", ` exit 0`);
+        } else {
+          text += theme.fg("error", ` exit ${exitCode}`);
+        }
+      }
+
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }
@@ -540,6 +569,9 @@ export default function (pi: ExtensionAPI) {
       const details = result.details as BashToolDetails | undefined;
       const content = result.content[0];
       const output = content?.type === "text" ? content.text : "";
+
+      const exitCode = bashExitCodes.get(_context.toolCallId);
+      const isError = exitCode !== undefined && exitCode !== 0;
 
       if (details?.truncation?.truncated) {
         return new Text(theme.fg("warning", "[truncated]"), 0, 0);
@@ -553,7 +585,12 @@ export default function (pi: ExtensionAPI) {
       let text = "";
       const previewLines = 20;
       for (const line of allLines.slice(0, previewLines)) {
-        text += `\n${theme.fg("dim", line)}`;
+        if (isError) {
+          // When command failed, stderr-like lines render in error color
+          text += `\n${theme.fg("error", line)}`;
+        } else {
+          text += `\n${theme.fg("dim", line)}`;
+        }
       }
       if (allLines.length > previewLines) {
         text += `\n${theme.fg("muted", `... ${allLines.length - previewLines} more lines`)}`;

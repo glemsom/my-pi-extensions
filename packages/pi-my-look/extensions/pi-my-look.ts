@@ -86,15 +86,51 @@ function getStatusIndicator(context: any, theme: any): string {
 }
 
 // ─── PATH RENDERING ─────────────────────────────────────────────────────────
+// Smart middle-truncation for long paths: preserve the filename, truncate only
+// the directory portion. Extremely long filenames fall back to right-truncation.
+
+const MAX_PATH_WIDTH = 50;
+const ELLIPSIS = "...";
 
 function renderPath(pathStr: string, theme: any): string {
   const lastSlash = pathStr.lastIndexOf("/");
-  if (lastSlash !== -1) {
-    const dir = pathStr.slice(0, lastSlash + 1);
-    const file = pathStr.slice(lastSlash + 1);
+  if (lastSlash === -1) {
+    // No directory component — plain filename or relative path
+    if (pathStr.length > MAX_PATH_WIDTH) {
+      return theme.fg("accent", pathStr.slice(0, MAX_PATH_WIDTH - ELLIPSIS.length) + ELLIPSIS);
+    }
+    return theme.fg("accent", pathStr);
+  }
+
+  const dir = pathStr.slice(0, lastSlash + 1);
+  const file = pathStr.slice(lastSlash + 1);
+
+  // Paths shorter than the max width are rendered unchanged
+  if (pathStr.length <= MAX_PATH_WIDTH) {
     return theme.fg("muted", dir) + theme.fg("accent", file);
   }
-  return theme.fg("accent", pathStr);
+
+  // Extremely long filenames: fall back to right-truncation of the filename
+  if (file.length > MAX_PATH_WIDTH) {
+    const truncatedFile = file.slice(0, MAX_PATH_WIDTH - ELLIPSIS.length) + ELLIPSIS;
+    return theme.fg("muted", dir) + theme.fg("accent", truncatedFile);
+  }
+
+  // Middle-truncate: preserve the filename, truncate only the directory portion
+  // Available budget for the (ellipsis + visible dir suffix) = max width - file length
+  const availableForDir = MAX_PATH_WIDTH - file.length - ELLIPSIS.length;
+
+  if (availableForDir <= 0) {
+    // Filename takes almost all budget — show ellipsis + filename
+    return theme.fg("muted", ELLIPSIS + "/") + theme.fg("accent", file);
+  }
+
+  // Keep the most specific (last) part of the directory path
+  const visibleDir = dir.length <= availableForDir
+    ? dir
+    : ELLIPSIS + dir.slice(dir.length - availableForDir);
+
+  return theme.fg("muted", visibleDir) + theme.fg("accent", file);
 }
 
 // ─── SEMANTIC PATH DETECTION ────────────────────────────────────────────────

@@ -24,15 +24,29 @@ _nix_store_ok() {
   local nix_dir="${1:-/nix}"
   [[ "${PI_BOX_SKIP_NIX_CHECK:-}" == "1" ]] && return 0
   [[ "$(uname -s)" != "Linux" ]] && return 0
+
   if ! test -d "$nix_dir" 2>/dev/null; then
-    _die "$nix_dir directory not found. Devbox requires nix, which needs $nix_dir to store packages.
-  Fix:  sudo mkdir -p $nix_dir && sudo chown \$USER $nix_dir
-  Then re-run your command." || return 1
-  elif ! test -w "$nix_dir" 2>/dev/null; then
-    _die "$nix_dir exists but is not writable by your user. Devbox requires nix, which needs write access to $nix_dir to store packages.
-  Fix:  sudo chown \$USER $nix_dir
+    _die "$nix_dir directory not found. Nix is not installed or its store is missing.
+  To install Nix with multi-user support (recommended), run:
+    sh <(curl -L https://nixos.org/nix/install) --daemon
+  Then start and enable the nix-daemon:
+    sudo systemctl enable nix-daemon && sudo systemctl start nix-daemon
   Then re-run your command." || return 1
   fi
+
+  if ! test -w "$nix_dir" 2>/dev/null; then
+    # /nix exists but is not writable — check if nix-daemon is running.
+    if ! pgrep -x nix-daemon &>/dev/null; then
+      _die "$nix_dir exists but is not writable, and the nix-daemon is not running.
+  Devbox/Nix on Linux requires the nix-daemon to be active.
+  Fix:  sudo systemctl enable nix-daemon && sudo systemctl start nix-daemon
+  Then re-run your command." || return 1
+    fi
+    # daemon is running (so it should handle store access), but /nix is still
+    # not writable by the user — this is expected for a healthy multi-user setup.
+    :
+  fi
+
   return 0
 }
 

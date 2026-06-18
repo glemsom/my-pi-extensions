@@ -27,11 +27,12 @@ import {
   createEditTool,
   createReadTool,
   keyHint,
+  ToolExecutionComponent,
   type BashToolDetails,
   type EditToolDetails,
   type ReadToolDetails,
 } from "@earendil-works/pi-coding-agent";
-import { Text, ToolExecutionComponent } from "@earendil-works/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 
 // ─── TOOL UI CONFIG ─────────────────────────────────────────────────────────
 // Open lookup architecture for tool styling. Any tool name can be added here

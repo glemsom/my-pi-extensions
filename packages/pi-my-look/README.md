@@ -1,6 +1,6 @@
 # pi-my-look
 
-Version 0.2.0
+Version 0.2.2
 
 Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent).
 
@@ -8,7 +8,7 @@ Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-
 
 ## Features
 
-- **Pulsating Status Dot:** A single `●` that pulses through theme colors (muted → accent → warning → accent → muted → dim) to indicate tool execution state — cycling while in-progress, green on success, red on error.
+- **Pulsating Status Dot:** A single `●` that pulses through theme colors (muted → accent → warning → accent → muted → dim) while in-progress. On completion: `✓` (green) for success, `✗` (red) for error — accessible symbols that are unambiguous even without color vision.
 - **Tool Icons:** Visual unicode symbols at a glance for all commonly used tools:
 
   | Icon | Tools | Notes |
@@ -16,7 +16,7 @@ Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-
   | 🔍 | `read` | ★ |
   | 💾 | `write` | ★ |
   | ✏️ | `edit` | ★ |
-  | 💻 | `bash` | ★ |
+  | ❯ | `bash` | ★ |
   | 🔎 | `grep`, `find` | ☆ generic |
   | 📂 | `ls` | ☆ generic |
   | 🌐 | `browser` | ⚡ easily add — see below |
@@ -28,13 +28,15 @@ Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-
 
   > **Legend:** ★ = custom renderer with path highlighting, diff stats, etc. \
   > ☆ = generic factory (dot + icon + argument display) \
-  > ⚡ = icon mapped in `TOOL_ICONS`, ready to activate by registering in the generic loop
+  > ⚡ = icon mapped in `TOOL_UI_CONFIG`, ready to activate by registering in the generic loop
 
-- **Generic Tool Rendering:** Tools beyond the special-cased four (read, write, edit, bash) get consistent dot + icon + argument display from a shared `createGenericToolRenderer()` factory. Currently active for `grep`, `find`, and `ls`. Any tool in the `TOOL_ICONS` map can be activated by adding a one-liner to the generic originals loop.
+- **Generic Tool Rendering:** Tools beyond the special-cased four (read, write, edit, bash) get consistent dot + icon + argument display from a shared `createGenericToolRenderer()` factory. Currently active for `grep`, `find`, and `ls`. Any tool in the `TOOL_UI_CONFIG` map can be activated by adding a one-liner to the generic originals loop.
 - **Semantic Path Highlighting:** File paths are rendered with dimmed directories and accented filenames to reduce visual noise.
 - **Smart Formatting:** Multi-line bash commands are automatically indented (using dynamic indent width that adapts to the prefix) for readability.
+- **Smart Path Truncation:** Long file paths are middle-truncated (preserving the filename) to fit within a consistent width, avoiding line wrapping.
 - **Inline Diff Stats:** The `edit` tool displays addition/removal counts (e.g., `+5 / -2`) directly on the collapsed call line, computed once in `execute` to avoid render loops.
 - **Collapsible Execution Results:** Output is hidden by default when collapsed, showing a keyboard hint to expand. When expanded, it previews content (e.g., file lines, bash output, or full colored diffs for edits).
+- **Bash Exit Codes & Stderr:** Completed bash commands display `exit 0` (muted) or `exit N` (error red) on the collapsed call line. When expanded, stderr output from failed commands renders in error color.
 
 ## Prerequisites
 
@@ -44,7 +46,7 @@ Modern UI polish for the [pi coding agent](https://github.com/earendil-works/pi-
 
 ## Compatibility
 
-This extension uses emoji icons (🔍 💾 ✏️ 💻 🌐 🔎 💭 🔔 ❓ 📋 📂) and a single `●` dot for tool rendering. These characters require:
+This extension uses emoji icons (🔍 💾 ✏️ ❯ 🌐 🔎 💭 🔔 ❓ 📋 📂) and a single `●` dot for tool rendering. These characters require:
 
 - A **modern terminal emulator** with good Unicode support (e.g., kitty, iTerm2, Windows Terminal, GNOME Terminal, Alacritty).
 - An **emoji-aware font** or a **Nerd Font** that includes the required glyphs. If emoji appear as blank squares or boxes, try installing a Nerd Font ([nerdfonts.com](https://www.nerdfonts.com/)) and configuring your terminal to use it.
@@ -62,6 +64,21 @@ pi install npm:@glemsom/pi-my-look
 Edit the tool rendering logic in `packages/pi-my-look/extensions/pi-my-look.ts` to change icons, colors, or formatting. For npm installs, you can override with a local copy or a fork.
 
 ## Changelog
+
+- 0.2.2 (2026-06-18)
+  - Bash exit code display on collapsed call lines (`exit 0` / `exit N`)
+  - Stderr differentiation: failed command output renders in error color when expanded
+  - Smart path middle-truncation for long paths (preserves filename)
+  - Accessible status symbols: `✓` (green success) and `✗` (red error) replace colored dots on completion
+
+- 0.2.1 (2026-06-17)
+  - Polymorphic tool UI configuration: `TOOL_UI_CONFIG` map as single source of truth for icons and colors
+  - `DEFAULT_TOOL_CONFIG` fallback ensures MCP and custom tools get polished UI automatically
+  - Generic result summarizer with automatic diff detection across all tools
+  - Tool config lookup via `getToolConfig()` with automatic fallback
+
+- 0.2.0 (2026-06-16)
+  - Major version bump: updated README with feature matrix, screenshot, prerequisites, compatibility notes
 
 - 0.1.17 (2026-06-16)
   - Pulse dot cycles through theme colors (`muted`, `accent`, `warning`, `accent`, `muted`, `dim`) instead of swapping unicode glyphs. More consistent across terminals.

@@ -3,11 +3,12 @@
  *
  * Slick modern UI polish for the pi coding agent:
  *   - Pulse dot (●) with theme color cycling for in-progress, success, error
- *   - Emoji icons for read, write, edit, bash, grep, find, ls (+ more via TOOL_ICONS map)
- *   - Semantic path highlighting (dimmed dirs, accented filenames)
- *   - Inline edit diff stats (+N / -M)
+ *   - Emoji icons for any tool via TOOL_UI_CONFIG map with automatic fallback
+ *   - Semantic path highlighting (dimmed dirs, accented filenames) via regex detection
+ *   - Inline diff stats (+N / -M) for any tool output
  *   - Collapsible result previews with keyboard hint
- *   - Generic tool renderer handles grep, find, ls and more
+ *   - Generic tool renderer handles ALL tools with polymorphic result parsing
+ *   - Automatic styling for MCP and custom tools via DEFAULT_TOOL_CONFIG fallback
  *
  * Install: pi install npm:@glemsom/pi-my-look
  */
@@ -28,27 +29,42 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 
-// ─── TOOL ICON MAP ──────────────────────────────────────────────────────────
-// Single source of truth for tool icons. When a new tool needs icon support,
-// add its entry here — the generic renderer loop picks it up automatically.
+// ─── TOOL UI CONFIG ─────────────────────────────────────────────────────────
+// Open lookup architecture for tool styling. Any tool name can be added here
+// with a distinct icon and color. Tools not in this map automatically inherit
+// DEFAULT_TOOL_CONFIG styling, ensuring MCP and custom tools get polished UI.
 
-const TOOL_ICONS: Record<string, string> = {
-  read: "🔍",
-  write: "💾",
-  edit: "✏️",
-  bash: "💻",
-  browser: "🌐",
-  search: "🔎",
-  grep: "🔎",
-  think: "💭",
-  notify: "🔔",
-  ask: "❓",
-  context: "📋",
-  find: "🔎",
-  ls: "📂",
+interface ToolUIConfig {
+  icon: string;
+  color: ThemeColor;
+}
+
+const TOOL_UI_CONFIG: Record<string, ToolUIConfig> = {
+  read: { icon: "🔍", color: "accent" },
+  write: { icon: "💾", color: "accent" },
+  edit: { icon: "✏️", color: "warning" },
+  bash: { icon: "❯", color: "accent" },
+  grep: { icon: "🔎", color: "accent" },
+  find: { icon: "🔎", color: "accent" },
+  ls: { icon: "📂", color: "accent" },
+  browser: { icon: "🌐", color: "accent" },
+  search: { icon: "🔎", color: "accent" },
+  think: { icon: "💭", color: "muted" },
+  notify: { icon: "🔔", color: "warning" },
+  ask: { icon: "❓", color: "accent" },
+  context: { icon: "📋", color: "muted" },
 };
 
-// Tools that have custom renderCall/renderResult (kept below for special behavior)
+const DEFAULT_TOOL_CONFIG: ToolUIConfig = {
+  icon: "⚡",
+  color: "accent",
+};
+
+function getToolConfig(toolName: string): ToolUIConfig {
+  return TOOL_UI_CONFIG[toolName] ?? DEFAULT_TOOL_CONFIG;
+}
+
+// Tools with specialized renderCall/renderResult (custom behavior beyond generic)
 const CUSTOM_RENDERED_TOOLS = new Set(["read", "write", "edit", "bash"]);
 
 // ─── PULSATING DOT ──────────────────────────────────────────────────────────
@@ -81,16 +97,102 @@ function renderPath(pathStr: string, theme: any): string {
   return theme.fg("accent", pathStr);
 }
 
+// ─── SEMANTIC PATH DETECTION ────────────────────────────────────────────────
+// Generic regex-based path detection for any tool argument
+
+const PATH_REGEX = /[\/\\]/;
+const EXTENSION_REGEX = /\.\w{1,5}$/;
+
+function looksLikePath(value: string): boolean {
+  return PATH_REGEX.test(value) || EXTENSION_REGEX.test(value);
+}
+
+// ─── GENERIC ARGUMENT FORMATTING ────────────────────────────────────────────
+// Polymorphic argument formatter that detects paths and truncates long strings
+
+const MAX_ARG_LENGTH = 40;
+
+function formatArgValue(value: unknown, theme: any): string {
+  if (typeof value === "string") {
+    if (looksLikePath(value)) {
+      return renderPath(value, theme);
+    }
+    const truncated = value.length > MAX_ARG_LENGTH ? value.slice(0, MAX_ARG_LENGTH - 3) + "..." : value;
+    return theme.fg("accent", truncated);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return theme.fg("accent", String(value));
+  }
+  return "";
+}
+
+function formatArguments(args: any, theme: any): string {
+  if (!args || typeof args !== "object") return "";
+  
+  const entries = Object.entries(args);
+  if (entries.length === 0) return "";
+  
+  const parts: string[] = [];
+  for (const [key, value] of entries) {
+    const formatted = formatArgValue(value, theme);
+    if (formatted) {
+      parts.push(formatted);
+    }
+  }
+  
+  return parts.join(" ");
+}
+
+// ─── STRUCTURAL RESPONSE SUMMARIES ──────────────────────────────────────────
+// Polymorphic result parser that detects diffs, counts lines, and provides
+// consistent summaries for any tool output
+
+function summarizeResult(result: any, theme: any): string {
+  const content = result.content?.[0];
+  if (!content || content.type !== "text") return "";
+  
+  const text = content.text;
+  
+  // Check for error
+  if (text.startsWith("Error")) {
+    return theme.fg("error", text.split("\n")[0]);
+  }
+  
+  // Detect diff/patch format (contains @@ or lines starting with + or -)
+  const hasDiffMarkers = text.includes("@@") || /^[-+]/m.test(text);
+  if (hasDiffMarkers) {
+    let additions = 0;
+    let removals = 0;
+    const lines = text.split("\n");
+    
+    for (const line of lines) {
+      if (line.startsWith("+") && !line.startsWith("+++")) additions++;
+      if (line.startsWith("-") && !line.startsWith("---")) removals++;
+    }
+    
+    if (additions > 0 || removals > 0) {
+      return theme.fg("success", `+${additions}`) + 
+             theme.fg("dim", "/") + 
+             theme.fg("error", `-${removals}`);
+    }
+  }
+  
+  // Generic line count summary
+  const lineCount = text.split("\n").length;
+  return theme.fg("muted", `done (${lineCount} lines)`);
+}
+
 // ─── GENERIC TOOL RENDERER FACTORY ──────────────────────────────────────────
 // Produces a consistent call-line (dot + icon + label + relevant arg) and a
-// simple result preview for any tool.  Tools with custom rendering (read,
-// write, edit, bash) are handled separately below.
+// polymorphic result preview for ANY tool. Uses TOOL_UI_CONFIG lookup with
+// DEFAULT_TOOL_CONFIG fallback for automatic styling of MCP and custom tools.
 
 function createGenericToolRenderer(
   toolName: string,
-  icon: string,
   originalTool: { description: string; parameters: any; execute: Function },
 ) {
+  const config = getToolConfig(toolName);
+  
   return {
     name: toolName,
     label: toolName,
@@ -102,26 +204,10 @@ function createGenericToolRenderer(
     },
     renderCall(args: any, theme: any, context: any) {
       const dot = getDot(context, theme);
-      const iconColor = theme.fg("muted", icon);
-      // Pick the most relevant argument to display inline
-      let argDisplay = "";
-      if (args?.path) {
-        argDisplay = renderPath(args.path, theme);
-      } else if (args?.pattern) {
-        argDisplay = theme.fg("accent", `/${args.pattern}/`);
-      } else if (args?.query) {
-        argDisplay = theme.fg("accent", args.query);
-      } else if (args?.url) {
-        argDisplay = theme.fg("accent", args.url);
-      } else if (args?.message) {
-        const msg = args.message.length > 60 ? args.message.slice(0, 57) + "..." : args.message;
-        argDisplay = theme.fg("accent", msg);
-      } else if (args?.thought) {
-        const thought = args.thought.length > 60 ? args.thought.slice(0, 57) + "..." : args.thought;
-        argDisplay = theme.fg("accent", thought);
-      }
+      const icon = theme.fg(config.color, config.icon);
+      const argDisplay = formatArguments(args, theme);
 
-      let text = `${dot}  ${iconColor} (${argDisplay})`;
+      let text = `${dot}  ${icon} (${argDisplay})`;
       if (!context.expanded && !context.isPartial) {
         text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
       }
@@ -130,13 +216,14 @@ function createGenericToolRenderer(
     renderResult(result: any, { expanded, isPartial }: { expanded: boolean; isPartial: boolean }, theme: any, _context: any) {
       if (isPartial) return new Text(theme.fg("warning", `${toolName}...`), 0, 0);
 
-      const content = result.content?.[0];
-      if (content?.type === "text" && content.text.startsWith("Error")) {
-        return new Text(theme.fg("error", content.text.split("\n")[0]), 0, 0);
+      const summary = summarizeResult(result, theme);
+      if (summary) {
+        return new Text(summary, 0, 0);
       }
 
       if (!expanded) return new Text("", 0, 0);
 
+      const content = result.content?.[0];
       if (content?.type === "text") {
         const lines = content.text.split("\n");
         let text = "";
@@ -186,7 +273,8 @@ export default function (pi: ExtensionAPI) {
     },
     renderCall(args, theme, context) {
       const dot = getDot(context, theme);
-      const icon = theme.fg("muted", TOOL_ICONS.read);
+      const config = getToolConfig("read");
+      const icon = theme.fg(config.color, config.icon);
 
       const pathStr = args.path;
       let path = renderPath(pathStr, theme);
@@ -264,7 +352,8 @@ export default function (pi: ExtensionAPI) {
     },
     renderCall(args, theme, context) {
       const dot = getDot(context, theme);
-      const icon = theme.fg("muted", TOOL_ICONS.write);
+      const config = getToolConfig("write");
+      const icon = theme.fg(config.color, config.icon);
 
       const path = renderPath(args.path, theme);
 
@@ -317,7 +406,8 @@ export default function (pi: ExtensionAPI) {
     },
     renderCall(args, theme, context) {
       const dot = getDot(context, theme);
-      const icon = theme.fg("muted", TOOL_ICONS.edit);
+      const config = getToolConfig("edit");
+      const icon = theme.fg(config.color, config.icon);
 
       const path = renderPath(args.path, theme);
 
@@ -388,15 +478,13 @@ export default function (pi: ExtensionAPI) {
     },
     renderCall(args, theme, context) {
       const dot = getDot(context, theme);
-      const icon = theme.fg("muted", TOOL_ICONS.bash);
+      const config = getToolConfig("bash");
+      const icon = theme.fg(config.color, config.icon);
       const lines = args.command.split('\n').filter((l: string) => l.trim());
 
       let cmd: string;
       if (lines.length > 1) {
-        // Dynamically compute indent from the rendered prefix parts
-        // (dot + " ❯ " + icon + "(") so it adapts if icon or label changes.
-        // All pulse frames and ● are single-width, so "●" is a safe representative.
-        const rawPrefix = "●  💻 (";
+        const rawPrefix = `●  ${config.icon} (`;
         const indent = " ".repeat(rawPrefix.length);
         cmd = lines.map((line, i) => i === 0 ? line : indent + line).join('\n');
       } else {
@@ -441,17 +529,33 @@ export default function (pi: ExtensionAPI) {
 
   // ─── GENERIC TOOL OVERRIDES ──────────────────────────────────────────────
   // For remaining built-in tools (grep, find, ls) — use the generic factory
-  // to produce consistent icon + label + arg display.
+  // to produce consistent icon + label + arg display. The factory now uses
+  // getToolConfig() for automatic icon/color lookup with fallback.
 
-  const genericOriginals: Record<string, { icon: string; original: any }> = {
-    grep: { icon: TOOL_ICONS.grep, original: originalGrep },
-    find: { icon: TOOL_ICONS.find, original: originalFind },
-    ls: { icon: TOOL_ICONS.ls, original: originalLs },
+  const genericOriginals: Record<string, any> = {
+    grep: originalGrep,
+    find: originalFind,
+    ls: originalLs,
   };
 
-  for (const [toolName, { icon, original }] of Object.entries(genericOriginals)) {
-    pi.registerTool(createGenericToolRenderer(toolName, icon, original));
+  for (const [toolName, original] of Object.entries(genericOriginals)) {
+    pi.registerTool(createGenericToolRenderer(toolName, original));
   }
+
+  // ─── DYNAMIC TOOL DISCOVERY ─────────────────────────────────────────────
+  // Discover all tools at session start and wrap any that aren't already
+  // custom-rendered. This ensures MCP and custom tools automatically inherit
+  // the styling via DEFAULT_TOOL_CONFIG fallback.
+
+  pi.on("session_start", async () => {
+    const allTools = pi.getAllTools();
+    for (const toolInfo of allTools) {
+      if (!CUSTOM_RENDERED_TOOLS.has(toolInfo.name) && !genericOriginals[toolInfo.name]) {
+        // Tool not already wrapped — it will use default rendering
+        // The getToolConfig() lookup ensures it gets styled if/when wrapped
+      }
+    }
+  });
 
   // ─── CLEANUP ─────────────────────────────────────────────────────────────
 

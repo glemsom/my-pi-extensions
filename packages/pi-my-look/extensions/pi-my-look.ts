@@ -9,8 +9,14 @@
  *   - Bash exit code display (exit 0 / exit N) on collapsed call lines
  *   - Stderr differentiation in expanded bash result view
  *   - Collapsible result previews with keyboard hint
- *   - Generic tool renderer handles ALL tools with polymorphic result parsing
- *   - Automatic styling for MCP and custom tools via DEFAULT_TOOL_CONFIG fallback
+ *
+ * Architecture: Monkey-patches ToolExecutionComponent.prototype to intercept
+ * getCallRenderer() and getResultRenderer(). ALL tools receive generic pulse-dot
+ * + icon + args + result-summary styling automatically — including ctx_* tools,
+ * MCP tools, and custom extensions. Three tools keep specialised renderers:
+ *   - read  — path + offset:limit range display
+ *   - edit  — inline diff stats (+N/-M) and coloured diff preview
+ *   - bash  — exit code display and stderr differentiation
  *
  * Install: pi install npm:@glemsom/pi-my-look
  */

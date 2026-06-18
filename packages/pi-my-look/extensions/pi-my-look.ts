@@ -19,11 +19,7 @@ import type { ExtensionAPI, ThemeColor } from "@earendil-works/pi-coding-agent";
 import {
   createBashTool,
   createEditTool,
-  createFindTool,
-  createGrepTool,
-  createLsTool,
   createReadTool,
-  createWriteTool,
   keyHint,
   type BashToolDetails,
   type EditToolDetails,
@@ -111,7 +107,7 @@ function getToolConfig(toolName: string): ToolUIConfig {
 }
 
 // Tools with specialized renderCall/renderResult (custom behavior beyond generic)
-const CUSTOM_RENDERED_TOOLS = new Set(["read", "write", "edit", "bash"]);
+const CUSTOM_RENDERED_TOOLS = new Set(["read", "edit", "bash"]);
 
 // ─── PULSATING DOT ──────────────────────────────────────────────────────────
 // Single ● that cycles through theme colors to show activity.
@@ -362,14 +358,10 @@ export default function (pi: ExtensionAPI) {
   // ─── Create original tool instances ───────────────────────────────────────
 
   const originalRead = createReadTool(cwd);
-  const originalWrite = createWriteTool(cwd);
   const originalEdit = createEditTool(cwd);
   const originalBash = createBashTool(cwd);
-  const originalGrep = createGrepTool(cwd);
-  const originalFind = createFindTool(cwd);
-  const originalLs = createLsTool(cwd);
 
-  // ─── TOOL OVERRIDES: custom rendering (4 existing tools) ───────────────────
+  // ─── TOOL OVERRIDES: custom rendering (3 specialised tools) ──────────────
 
   // Read
   pi.registerTool({
@@ -447,41 +439,6 @@ export default function (pi: ExtensionAPI) {
       }
 
       return new Text(text, 0, 0);
-    },
-  });
-
-  // Write
-  pi.registerTool({
-    name: "write",
-    label: "write",
-    description: originalWrite.description,
-    parameters: originalWrite.parameters,
-    renderShell: "self",
-    async execute(toolCallId, params, signal, onUpdate) {
-      return originalWrite.execute(toolCallId, params, signal, onUpdate);
-    },
-    renderCall(args, theme, context) {
-      const status = getStatusIndicator(context, theme);
-      const config = getToolConfig("write");
-      const icon = theme.fg(config.color, config.icon);
-
-      const path = renderPath(args.path, theme);
-
-      let text = `${status}  ${icon} (${path})`;
-      if (!context.expanded && !context.isPartial) {
-        text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
-      }
-      return new Text(text, 0, 0);
-    },
-    renderResult(result, { isPartial }, theme, _context) {
-      if (isPartial) return new Text(theme.fg("warning", "Writing..."), 0, 0);
-
-      const content = result.content[0];
-      if (content?.type === "text" && content.text.startsWith("Error")) {
-        return new Text(theme.fg("error", content.text.split("\n")[0]), 0, 0);
-      }
-
-      return new Text("", 0, 0);
     },
   });
 
@@ -673,19 +630,11 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ─── GENERIC TOOL OVERRIDES ──────────────────────────────────────────────
-  // For remaining built-in tools (grep, find, ls) — use the generic factory
-  // to produce consistent icon + label + arg display. The factory now uses
-  // getToolConfig() for automatic icon/color lookup with fallback.
-
-  const genericOriginals: Record<string, any> = {
-    grep: originalGrep,
-    find: originalFind,
-    ls: originalLs,
-  };
-
-  for (const [toolName, original] of Object.entries(genericOriginals)) {
-    pi.registerTool(createGenericToolRenderer(toolName, original));
-  }
+  // With the ToolExecutionComponent monkey-patches (#13, #14), ALL tools
+  // (grep, find, ls, ctx_*, MCP, custom extensions) automatically receive
+  // generic call + result rendering. No per-tool pi.registerTool() calls
+  // are needed — the monkey-patches handle styling for everything except
+  // the three specialised tools above (read, edit, bash).
 
   // ─── DYNAMIC TOOL DISCOVERY ─────────────────────────────────────────────
   // Discover all tools at session start and wrap any that aren't already
@@ -695,9 +644,9 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async () => {
     const allTools = pi.getAllTools();
     for (const toolInfo of allTools) {
-      if (!CUSTOM_RENDERED_TOOLS.has(toolInfo.name) && !genericOriginals[toolInfo.name]) {
-        // Tool not already wrapped — it will use default rendering
-        // The getToolConfig() lookup ensures it gets styled if/when wrapped
+      if (!CUSTOM_RENDERED_TOOLS.has(toolInfo.name)) {
+        // All non-specialised tools receive generic rendering via the
+        // ToolExecutionComponent monkey-patches — no wrapping needed.
       }
     }
   });

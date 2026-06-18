@@ -51,6 +51,29 @@ _nix_store_ok() {
 }
 
 pi-box() {
+  # --help flag: print usage and exit.
+  if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+Usage: pi-box [FLAG] [--] [PI-ARGS...]
+
+  (no flag)     Activate the devbox environment and run Pi.
+                If ./devbox.json exists, uses the project environment;
+                otherwise uses the global devbox environment.
+  --update      Refresh Pi and default extensions to latest versions.
+                Works in both project and no-project contexts.
+  --shell       Activate the devbox environment and drop into an
+                interactive shell (instead of launching Pi).
+                If ./devbox.json exists, runs "devbox shell";
+                otherwise activates the global environment in-place.
+  --help, -h    Show this message.
+
+Environment:
+  PI_BOX_SKIP_NIX_CHECK=1   Bypass the /nix store pre-flight check
+                            (useful for tests or non-Linux systems).
+EOF
+    return 0
+  fi
+
   # --update flag: refresh Pi and extensions to latest versions.
   # Works in both project and no-project contexts.
   if [[ "${1:-}" == "--update" ]]; then
@@ -82,10 +105,13 @@ pi-box() {
   fi
 
   # --shell flag (no-project): activate global environment, drop into interactive shell.
+  # eval runs in the current shell (not a subshell), so the devbox environment
+  # (PATH, shell functions, completions from the init-hook) persists after return.
   if [[ "${1:-}" == "--shell" ]]; then
     _nix_store_ok || return 1
     eval "$(devbox global shellenv --init-hook --recompute)" || { _die "devbox global shellenv failed. Check the output above for details."; return 1; }
-    exec bash || { _die "failed to launch interactive shell from the devbox environment. Is bash available on your PATH?"; return 1; }
+    echo "pi-box: devbox global environment activated. Run 'pi' to start the agent."
+    return 0
   fi
 
   # No project devbox.json: activate global environment and run Pi.

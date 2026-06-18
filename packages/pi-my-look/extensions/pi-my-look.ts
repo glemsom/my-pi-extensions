@@ -29,7 +29,7 @@ import {
   type EditToolDetails,
   type ReadToolDetails,
 } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Text, ToolExecutionComponent } from "@earendil-works/pi-tui";
 
 // ─── TOOL UI CONFIG ─────────────────────────────────────────────────────────
 // Open lookup architecture for tool styling. Any tool name can be added here
@@ -269,12 +269,24 @@ function summarizeResult(result: any, theme: any): string {
 // polymorphic result preview for ANY tool. Uses TOOL_UI_CONFIG lookup with
 // DEFAULT_TOOL_CONFIG fallback for automatic styling of MCP and custom tools.
 
+function genericCallRenderer(toolName: string) {
+  const config = getToolConfig(toolName);
+  return function renderCall(args: any, theme: any, context: any) {
+    const status = getStatusIndicator(context, theme);
+    const icon = theme.fg(config.color, config.icon);
+    const argDisplay = formatArguments(args, theme);
+    let text = `${status}  ${icon} (${argDisplay})`;
+    if (!context.expanded && !context.isPartial) {
+      text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
+    }
+    return new Text(text, 0, 0);
+  };
+}
+
 function createGenericToolRenderer(
   toolName: string,
   originalTool: { description: string; parameters: any; execute: Function },
 ) {
-  const config = getToolConfig(toolName);
-  
   return {
     name: toolName,
     label: toolName,
@@ -284,17 +296,7 @@ function createGenericToolRenderer(
     async execute(toolCallId: string, params: any, signal: any, onUpdate: any) {
       return originalTool.execute(toolCallId, params, signal, onUpdate);
     },
-    renderCall(args: any, theme: any, context: any) {
-      const status = getStatusIndicator(context, theme);
-      const icon = theme.fg(config.color, config.icon);
-      const argDisplay = formatArguments(args, theme);
-
-      let text = `${status}  ${icon} (${argDisplay})`;
-      if (!context.expanded && !context.isPartial) {
-        text += " " + theme.fg("muted", "(") + keyHint("app.tools.expand", "to expand") + theme.fg("muted", ")");
-      }
-      return new Text(text, 0, 0);
-    },
+    renderCall: genericCallRenderer(toolName),
     renderResult(result: any, { expanded, isPartial }: { expanded: boolean; isPartial: boolean }, theme: any, _context: any) {
       if (isPartial) return new Text(theme.fg("warning", `${toolName}...`), 0, 0);
 
@@ -330,6 +332,20 @@ function createGenericToolRenderer(
 
 export default function (pi: ExtensionAPI) {
   const cwd = process.cwd();
+
+  // ─── MONKEY-PATCH ToolExecutionComponent ────────────────────────────────
+  // Intercept getCallRenderer() so ALL tools (except read/edit/bash which
+  // have specialised renderers) get the generic pulse-dot + icon + args
+  // styling. This covers ctx_*, MCP, and any custom extension tools.
+
+  const TC = ToolExecutionComponent as any;
+  const originalGetCallRenderer = TC.prototype.getCallRenderer;
+  TC.prototype.getCallRenderer = function () {
+    if (this.toolName === "read" || this.toolName === "edit" || this.toolName === "bash") {
+      return originalGetCallRenderer.call(this);
+    }
+    return genericCallRenderer(this.toolName);
+  };
 
   // ─── Create original tool instances ───────────────────────────────────────
 

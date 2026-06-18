@@ -283,6 +283,35 @@ function genericCallRenderer(toolName: string) {
   };
 }
 
+function genericResultRenderer(toolName: string) {
+  return function renderResult(result: any, { expanded, isPartial }: { expanded: boolean; isPartial: boolean }, theme: any, _context: any) {
+    if (isPartial) return new Text(theme.fg("warning", `${toolName}...`), 0, 0);
+
+    const summary = summarizeResult(result, theme);
+    if (summary) {
+      return new Text(summary, 0, 0);
+    }
+
+    if (!expanded) return new Text("", 0, 0);
+
+    const content = result.content?.[0];
+    if (content?.type === "text") {
+      const lines = content.text.split("\n");
+      let text = "";
+      const previewLines = 15;
+      for (const line of lines.slice(0, previewLines)) {
+        text += `\n${theme.fg("dim", line)}`;
+      }
+      if (lines.length > previewLines) {
+        text += `\n${theme.fg("muted", `... ${lines.length - previewLines} more lines`)}`;
+      }
+      return new Text(text, 0, 0);
+    }
+
+    return new Text("", 0, 0);
+  };
+}
+
 function createGenericToolRenderer(
   toolName: string,
   originalTool: { description: string; parameters: any; execute: Function },
@@ -297,32 +326,7 @@ function createGenericToolRenderer(
       return originalTool.execute(toolCallId, params, signal, onUpdate);
     },
     renderCall: genericCallRenderer(toolName),
-    renderResult(result: any, { expanded, isPartial }: { expanded: boolean; isPartial: boolean }, theme: any, _context: any) {
-      if (isPartial) return new Text(theme.fg("warning", `${toolName}...`), 0, 0);
-
-      const summary = summarizeResult(result, theme);
-      if (summary) {
-        return new Text(summary, 0, 0);
-      }
-
-      if (!expanded) return new Text("", 0, 0);
-
-      const content = result.content?.[0];
-      if (content?.type === "text") {
-        const lines = content.text.split("\n");
-        let text = "";
-        const previewLines = 15;
-        for (const line of lines.slice(0, previewLines)) {
-          text += `\n${theme.fg("dim", line)}`;
-        }
-        if (lines.length > previewLines) {
-          text += `\n${theme.fg("muted", `... ${lines.length - previewLines} more lines`)}`;
-        }
-        return new Text(text, 0, 0);
-      }
-
-      return new Text("", 0, 0);
-    },
+    renderResult: genericResultRenderer(toolName),
   };
 }
 
@@ -345,6 +349,14 @@ export default function (pi: ExtensionAPI) {
       return originalGetCallRenderer.call(this);
     }
     return genericCallRenderer(this.toolName);
+  };
+
+  const originalGetResultRenderer = TC.prototype.getResultRenderer;
+  TC.prototype.getResultRenderer = function () {
+    if (this.toolName === "read" || this.toolName === "edit" || this.toolName === "bash") {
+      return originalGetResultRenderer.call(this);
+    }
+    return genericResultRenderer(this.toolName);
   };
 
   // ─── Create original tool instances ───────────────────────────────────────

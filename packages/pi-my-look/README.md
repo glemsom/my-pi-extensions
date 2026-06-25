@@ -116,7 +116,30 @@ pi install npm:@glemsom/pi-my-look
 
 ## Customize
 
-Edit `TOOL_UI_CONFIG` in `packages/pi-my-look/extensions/pi-my-look.ts` to add or change tool icons and colors. The monkey-patch architecture means no per-tool registration is needed — just add an entry to the map.
+There are two ways to add or change tool icons and colors. The monkey-patch architecture means no per-tool registration is needed — just provide an icon/color pair and it gets styled automatically.
+
+### Option 1: External config file (recommended, no package edits)
+
+Create a config file at `$XDG_CONFIG_HOME/pi-my-look/config.json` (or `~/.config/pi-my-look/config.json` if `XDG_CONFIG_HOME` is unset). It is read once at startup; if missing or invalid, the built-in map is used unchanged.
+
+```json
+{
+  "tools": {
+    "memory_save": { "icon": "💾", "color": "accent" },
+    "my_custom_tool": { "icon": "🎨", "color": "accent" }
+  },
+  "default": { "icon": "🔧", "color": "accent" }
+}
+```
+
+- `tools` entries are merged into the built-in `TOOL_UI_CONFIG` — user entries win on conflict, so you can override built-in icons too.
+- `default` overrides the fallback config used for tools not in the map.
+- `color` is a [theme color](https://github.com/glemsom/my-pi-extensions) name (e.g. `accent`, `warning`, `success`, `muted`).
+- Entries with a non-string `icon` or `color` are skipped (parsing is lenient and never throws).
+
+### Option 2: Edit the source
+
+Edit `TOOL_UI_CONFIG` in `packages/pi-my-look/extensions/pi-my-look.ts` to add or change tool icons and colors directly. Useful for changes you want shipped with the package.
 
 ## Changelog
 

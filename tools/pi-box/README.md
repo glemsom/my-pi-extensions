@@ -22,44 +22,10 @@ cd my-pi-extensions/tools/pi-box
 
 `setup.sh` is idempotent — running it twice is safe. If the base environment is already configured, it prints `nothing to do` and exits. Use `./setup.sh --force` to overwrite an existing config with the canonical pi-box defaults.
 
-After setup, add the `pi-box` command to your shell by sourcing the function file in your `~/.bashrc`:
+After setup, add the `pi-box` command to your shell by adding this to your `~/.bashrc`:
 
 ```bash
 source /path/to/my-pi-extensions/tools/pi-box/pi-box.sh
-```
-
-Alternatively, copy the function below into your `~/.bashrc`:
-
-```bash
-pi-box() {
-  if [[ "${1:-}" == "--update" ]]; then
-    eval "$(devbox global shellenv --init-hook --recompute)"
-    command -v pi &>/dev/null || { echo "Error: pi not found after shellenv (run 'pi-box --update' to install)" >&2; return 6; }
-    npm update -g @earendil-works/pi-coding-agent
-    pi install npm:@dreki-gg/pi-context7
-    return
-  fi
-
-  if [[ -f ./devbox.json ]]; then
-    if [[ "${1:-}" == "--shell" ]]; then
-      devbox shell
-      return
-    fi
-    devbox shell -- pi "$@"
-    return
-  fi
-
-  if [[ "${1:-}" == "--shell" ]]; then
-    eval "$(devbox global shellenv --init-hook --recompute)"
-    exec bash
-  fi
-
-  (
-    eval "$(devbox global shellenv --init-hook --recompute)" || { echo "Error: devbox global shellenv failed" >&2; exit 1; }
-    command -v pi &>/dev/null || { echo "Error: pi not found after shellenv. If devbox reported errors above (nix permission, network, etc.), those must be fixed first. For nix issues: https://nixos.org/download. For devbox setup: https://www.jetify.com/devbox/docs/installing_devbox/" >&2; exit 6; }
-    pi "$@"
-  )
-}
 ```
 
 Then restart your shell or run `source ~/.bashrc`.

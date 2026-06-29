@@ -8,12 +8,9 @@ if ! command -v devbox &>/dev/null; then
   exit 1
 fi
 
-# Extract package definitions from pi-box.sh (single source of truth).
-# Uses grep+eval to import only the variable assignments, not the functions.
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-_PI_BOX_SH="$SCRIPT_DIR/pi-box.sh"
-eval "$(grep '^PI_BOX_PI_PKG=\|^PI_BOX_CTX7_PKG=' "$_PI_BOX_SH")" || { echo "Error: cannot read package definitions from pi-box.sh"; exit 5; }
-
+source "$SCRIPT_DIR/lib/packages.sh"
+# Package names (PI_BOX_PI_PKG, PI_BOX_CTX7_PKG) now in lib/packages.sh.
 GLOBAL_CONFIG="$HOME/.local/share/devbox/global/default/devbox.json"
 
 

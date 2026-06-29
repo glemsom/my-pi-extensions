@@ -9,15 +9,12 @@
 # Multi-user Nix setups use nix-daemon, so /nix need not be user-writable.
 # Set PI_BOX_SKIP_NIX_CHECK=1 to bypass (used by tests).
 
-# Package definitions — single source of truth for Pi and the default extension.
-# Used by setup.sh (to generate the init_hook) and the --update handler below.
-PI_BOX_PI_PKG="@earendil-works/pi-coding-agent"
-PI_BOX_CTX7_PKG="@dreki-gg/pi-context7"
-
 # Path resolution for sourcing shared modules.
 _PI_BOX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_PI_BOX_DIR/lib/preflight.sh"
 # _die and _nix_store_ok are now in lib/preflight.sh (sourced above).
+source "$_PI_BOX_DIR/lib/packages.sh"
+# Package names (PI_BOX_PI_PKG, PI_BOX_CTX7_PKG) now in lib/packages.sh.
 
 # Activate the global devbox environment. Returns 1 on failure
 # with a diagnostic message. Caller decides how to handle failure

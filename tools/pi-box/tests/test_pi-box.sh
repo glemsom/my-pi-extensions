@@ -57,7 +57,7 @@ summary() {
 # ---- helpers ----
 
 # Create a temp HOME with mock devbox and pi.
-# Sets TEST_HOME, HOME, and PATH in the calling scope.
+# Sets TEST_HOME, HOME, PATH, and PI_BOX_NIX_DIR in calling scope.
 setup_test_env() {
   TEST_HOME=$(mktemp -d) || { echo "FATAL: mktemp failed" >&2; exit 2; }
   export HOME="$TEST_HOME"
@@ -75,6 +75,15 @@ true
 FAKEDEVBOX
   chmod +x "$TEST_HOME/bin/devbox" || { echo "FATAL: cannot chmod fake devbox" >&2; exit 2; }
 
+  cat > "$TEST_HOME/bin/systemctl" << 'FAKESYSTEMCTL' || { echo "FATAL: cannot write fake systemctl" >&2; exit 2; }
+#!/usr/bin/env bash
+if [[ "$1" == "is-active" && "$2" == "--quiet" && "$3" == "nix-daemon" ]]; then
+  exit "${PI_BOX_TEST_SYSTEMCTL_EXIT_CODE:-1}"
+fi
+exit 1
+FAKESYSTEMCTL
+  chmod +x "$TEST_HOME/bin/systemctl" || { echo "FATAL: cannot chmod fake systemctl" >&2; exit 2; }
+
   # Fake pi: records invocations and arguments
   cat > "$TEST_HOME/bin/pi" << 'FAKEPI' || { echo "FATAL: cannot write fake pi" >&2; exit 2; }
 #!/usr/bin/env bash
@@ -86,6 +95,9 @@ FAKEPI
 
   export PATH="$TEST_HOME/bin:/usr/bin:/bin"
   export PI_BOX_SKIP_NIX_CHECK=1
+  export PI_BOX_TEST_SYSTEMCTL_EXIT_CODE=1
+  export PI_BOX_NIX_DIR="$TEST_HOME/nix"
+  mkdir -p "$PI_BOX_NIX_DIR" || { echo "FATAL: cannot create $PI_BOX_NIX_DIR" >&2; exit 2; }
 }
 
 # ---- test 1: pi-box "help" activates devbox and runs pi with "help" (tracer bullet) ----
@@ -557,16 +569,16 @@ fi
 trap - EXIT
 rm -rf "$TEST_HOME"
 
-# ---- test 14: pre-flight nix check fires when /nix missing on Linux ----
+# ---- test 14: pre-flight nix check fires when nix dir missing on Linux ----
 
 echo ""
-echo "=== test 14: pre-flight nix check fires when /nix missing ==="
+echo "=== test 14: pre-flight nix check fires when nix dir missing ==="
 
 setup_test_env
 trap 'rm -rf "$TEST_HOME"' EXIT
 
-# Remove the skip guard so the pre-flight actually runs
 unset PI_BOX_SKIP_NIX_CHECK
+export PI_BOX_NIX_DIR="$TEST_HOME/missing-nix"
 
 cd "$TEST_HOME" || { echo "FATAL: cd to test home failed" >&2; exit 2; }
 source "$PI_BOX_SH"
@@ -574,12 +586,11 @@ source "$PI_BOX_SH"
 OUTPUT=$(pi-box "help" 2>&1)
 EXIT_CODE=$?
 
-assert_exit "missing /nix exits 1" 1 "$EXIT_CODE"
-assert_contains "error mentions /nix" "$OUTPUT" "/nix"
-assert_contains "error gives sudo mkdir fix" "$OUTPUT" "sudo mkdir"
-assert_contains "error gives sudo chown fix" "$OUTPUT" "sudo chown"
+assert_exit "missing nix dir exits 1" 1 "$EXIT_CODE"
+assert_contains "error mentions nix dir" "$OUTPUT" "$PI_BOX_NIX_DIR"
+assert_contains "error suggests daemon install" "$OUTPUT" "--daemon"
+assert_contains "error mentions nix-daemon" "$OUTPUT" "nix-daemon"
 
-# devbox should NOT have been called (pre-flight caught it early)
 if [[ -f "$TEST_HOME/devbox-calls.log" ]]; then
   echo "  FAIL: devbox was called (should have been blocked by pre-flight)"
   FAIL=$((FAIL + 1))
@@ -591,21 +602,20 @@ fi
 trap - EXIT
 rm -rf "$TEST_HOME"
 
-# ---- test 15: _nix_store_ok detects non-writable /nix (function unit test) ----
+# ---- test 15: _nix_store_ok fails for non-writable nix dir when daemon is down ----
 
 echo ""
-echo "=== test 15: _nix_store_ok detects non-writable nix dir ==="
+echo "=== test 15: _nix_store_ok fails for non-writable nix dir without daemon ==="
 
 setup_test_env
 trap 'rm -rf "$TEST_HOME"' EXIT
 
-# Remove skip guard so the check actually runs
 unset PI_BOX_SKIP_NIX_CHECK
+export PI_BOX_TEST_SYSTEMCTL_EXIT_CODE=1
 
 cd "$TEST_HOME" || { echo "FATAL: cd to test home failed" >&2; exit 2; }
 source "$PI_BOX_SH"
 
-# Create a non-writable directory to test the check
 NONWRITABLE_DIR="$TEST_HOME/nonwritable-nix"
 mkdir -p "$NONWRITABLE_DIR" || { echo "FATAL: cannot create test dir" >&2; exit 2; }
 chmod 555 "$NONWRITABLE_DIR" || { echo "FATAL: cannot chmod test dir" >&2; exit 2; }
@@ -616,9 +626,8 @@ EXIT_CODE=$?
 assert_exit "non-writable nix dir exits non-zero" 1 "$EXIT_CODE"
 assert_contains "error mentions dir path" "$OUTPUT" "$NONWRITABLE_DIR"
 assert_contains "error says not writable" "$OUTPUT" "not writable"
-assert_contains "error gives sudo chown fix" "$OUTPUT" "sudo chown"
+assert_contains "error mentions nix-daemon" "$OUTPUT" "nix-daemon"
 
-# Cleanup: restore writability so rm -rf works
 chmod 755 "$NONWRITABLE_DIR" 2>/dev/null || true
 
 trap - EXIT

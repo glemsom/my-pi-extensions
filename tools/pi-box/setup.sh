@@ -14,6 +14,7 @@ _PI_BOX_SH="$(dirname "$(readlink -f "$0")")/pi-box.sh"
 eval "$(grep '^PI_BOX_PI_PKG=\|^PI_BOX_CTX7_PKG=\|^PI_BOX_MYLOOK_PKG=' "$_PI_BOX_SH")" || { echo "Error: cannot read package definitions from pi-box.sh"; exit 5; }
 
 GLOBAL_CONFIG="$HOME/.local/share/devbox/global/default/devbox.json"
+NIX_DIR="${PI_BOX_NIX_DIR:-/nix}"
 
 ALREADY_CONFIGURED=false
 # Check if already configured (idempotency)
@@ -28,19 +29,25 @@ fi
 if $ALREADY_CONFIGURED; then
   echo "nothing to do"
 else
-  # Pre-flight: check nix store exists on Linux before configuring.
+  # Pre-flight: check Nix store is usable on Linux before configuring.
   # Set PI_BOX_SKIP_NIX_CHECK=1 to bypass (used by tests).
   if [[ "$(uname -s)" == "Linux" ]] && [[ "${PI_BOX_SKIP_NIX_CHECK:-}" != "1" ]]; then
-    if ! test -d /nix 2>/dev/null; then
-      echo "Error: /nix directory not found. Devbox requires nix, which needs /nix to store packages." >&2
-      echo "  Fix:  sudo mkdir -p /nix && sudo chown \$USER /nix" >&2
+    if ! test -d "$NIX_DIR" 2>/dev/null; then
+      echo "Error: $NIX_DIR directory not found. Nix is not installed or its store is missing." >&2
+      echo "  To install Nix with multi-user support (recommended), run:" >&2
+      echo "    sh <(curl -L https://nixos.org/nix/install) --daemon" >&2
+      echo "  Then start and enable the nix-daemon:" >&2
+      echo "    sudo systemctl enable nix-daemon && sudo systemctl start nix-daemon" >&2
       echo "  Then re-run setup.sh." >&2
       exit 4
-    elif ! test -w /nix 2>/dev/null; then
-      echo "Error: /nix exists but is not writable by your user. Devbox requires nix, which needs write access to /nix to store packages." >&2
-      echo "  Fix:  sudo chown \$USER /nix" >&2
-      echo "  Then re-run setup.sh." >&2
-      exit 4
+    elif ! test -w "$NIX_DIR" 2>/dev/null; then
+      if ! systemctl is-active --quiet nix-daemon; then
+        echo "Error: $NIX_DIR exists but is not writable, and nix-daemon is not active or systemctl is unavailable." >&2
+        echo "  Devbox/Nix on Linux requires the nix-daemon for multi-user setups." >&2
+        echo "  Fix:  sudo systemctl enable nix-daemon && sudo systemctl start nix-daemon" >&2
+        echo "  Then re-run setup.sh." >&2
+        exit 4
+      fi
     fi
   fi
 
@@ -73,7 +80,9 @@ DEVENDOF
   DEVERROR=$(devbox global shellenv --recompute 2>&1 >/dev/null); DEVBEXIT=$?
   if [[ ${DEVBEXIT:-0} -ne 0 || -n "${DEVERROR:-}" ]]; then
     if echo "${DEVERROR:-}" | grep -qiF -e "permission denied" -e "/nix/store" -e "creating directory"; then
-      echo "Warning: devbox cannot access /nix/store (permission denied)." >&2
+      echo "Warning: devbox cannot access /nix/store." >&2
+      echo "  If this is a multi-user Nix install, ensure nix-daemon is running:" >&2
+      echo "    sudo systemctl enable nix-daemon && sudo systemctl start nix-daemon" >&2
       echo "  For nix installation: https://nixos.org/download" >&2
       echo "  For devbox setup: https://www.jetify.com/devbox/docs/installing_devbox/" >&2
     else

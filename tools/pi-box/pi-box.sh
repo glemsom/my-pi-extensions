@@ -5,8 +5,8 @@
 #
 # The function activates the global devbox environment and runs Pi.
 # On first invocation, the init_hook installs Pi and extensions automatically.
-# Pre-flight: verify nix store is accessible on Linux.
-# Devbox requires nix, which needs /nix to store packages.
+# Pre-flight: verify Nix store is usable on Linux.
+# Multi-user Nix setups use nix-daemon, so /nix need not be user-writable.
 # Set PI_BOX_SKIP_NIX_CHECK=1 to bypass (used by tests).
 
 # Package definitions — single source of truth for Pi and the default extension.
@@ -21,7 +21,7 @@ _die() {
 }
 
 _nix_store_ok() {
-  local nix_dir="${1:-/nix}"
+  local nix_dir="${1:-${PI_BOX_NIX_DIR:-/nix}}"
   [[ "${PI_BOX_SKIP_NIX_CHECK:-}" == "1" ]] && return 0
   [[ "$(uname -s)" != "Linux" ]] && return 0
 
@@ -35,9 +35,9 @@ _nix_store_ok() {
   fi
 
   if ! test -w "$nix_dir" 2>/dev/null; then
-    # /nix exists but is not writable — check if nix-daemon is running.
-    if ! pgrep -x nix-daemon &>/dev/null; then
-      _die "$nix_dir exists but is not writable, and the nix-daemon is not running.
+    # /nix exists but is not writable — check if nix-daemon is active.
+    if ! systemctl is-active --quiet nix-daemon; then
+      _die "$nix_dir exists but is not writable, and nix-daemon is not active or systemctl is unavailable.
   Devbox/Nix on Linux requires the nix-daemon to be active.
   Fix:  sudo systemctl enable nix-daemon && sudo systemctl start nix-daemon
   Then re-run your command." || return 1

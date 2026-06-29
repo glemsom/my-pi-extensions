@@ -8,6 +8,7 @@ Isolated, reproducible Pi agent environment using [devbox](https://www.jetify.co
 ## Prerequisites
 
 - **devbox** must be installed. Follow the [devbox install guide](https://www.jetify.com/devbox/docs/installing_devbox/).
+- On **Linux**, Nix must be installed. Multi-user Nix is supported: `/nix` does **not** need to be writable by your user if `nix-daemon` is running.
 
 ## Setup
 
@@ -62,6 +63,21 @@ pi-box() {
 ```
 
 Then restart your shell or run `source ~/.bashrc`.
+
+## Linux note: multi-user Nix
+
+If `setup.sh` or `pi-box` complains about `/nix` permissions, do **not** `chown` `/nix` in a normal multi-user install. Start `nix-daemon` instead:
+
+```bash
+sudo systemctl enable nix-daemon
+sudo systemctl start nix-daemon
+```
+
+If Nix is not installed yet, install multi-user Nix:
+
+```bash
+sh <(curl -L https://nixos.org/nix/install) --daemon
+```
 
 ## Usage
 

@@ -27,7 +27,7 @@ A per-repository `devbox.json` that optionally extends the base box with additio
 _Avoid_: local config, repo devbox
 
 **setup.sh**:
-The idempotent setup script in `tools/pi-box/`. Edits the global devbox config to declare the base box packages, env vars, and init hooks. Does not install packages — deferred to first run.
+The idempotent setup script in `tools/pi-box/`. Validates base box host prerequisites, then edits the global devbox config to declare packages, env vars, and init hooks. Does not install packages — deferred to first run.
 _Avoid_: install.sh, bootstrap
 
 **_die**:

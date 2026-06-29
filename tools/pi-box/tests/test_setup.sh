@@ -91,7 +91,7 @@ summary() {
 # ---- helpers ----
 
 # Create a temp HOME with mock devbox installed.
-# Sets TEST_HOME, HOME, and PATH in the calling scope.
+# Sets TEST_HOME, HOME, PATH, and PI_BOX_NIX_DIR in calling scope.
 # Caller must set up trap for cleanup using $TEST_HOME.
 setup_test_env() {
   TEST_HOME=$(mktemp -d) || { echo "FATAL: mktemp failed" >&2; exit 2; }
@@ -102,8 +102,19 @@ setup_test_env() {
 true
 FAKEDEVBOX
   chmod +x "$TEST_HOME/bin/devbox" || { echo "FATAL: cannot chmod fake devbox" >&2; exit 2; }
+  cat > "$TEST_HOME/bin/systemctl" << 'FAKESYSTEMCTL' || { echo "FATAL: cannot write fake systemctl" >&2; exit 2; }
+#!/usr/bin/env bash
+if [[ "$1" == "is-active" && "$2" == "--quiet" && "$3" == "nix-daemon" ]]; then
+  exit "${PI_BOX_TEST_SYSTEMCTL_EXIT_CODE:-1}"
+fi
+exit 1
+FAKESYSTEMCTL
+  chmod +x "$TEST_HOME/bin/systemctl" || { echo "FATAL: cannot chmod fake systemctl" >&2; exit 2; }
   export PATH="$TEST_HOME/bin:/usr/bin:/bin"
   export PI_BOX_SKIP_NIX_CHECK=1
+  export PI_BOX_TEST_SYSTEMCTL_EXIT_CODE=1
+  export PI_BOX_NIX_DIR="$TEST_HOME/nix"
+  mkdir -p "$PI_BOX_NIX_DIR" || { echo "FATAL: cannot create $PI_BOX_NIX_DIR" >&2; exit 2; }
 }
 
 # ---- test 1: missing devbox ----
@@ -112,12 +123,16 @@ echo ""
 echo "=== test 1: missing devbox ==="
 
 TEST_HOME=$(mktemp -d) || { echo "FATAL: mktemp failed" >&2; exit 2; }
-trap 'rm -rf "$TEST_HOME"' EXIT
+trap '/bin/rm -rf "$TEST_HOME"' EXIT
 export HOME="$TEST_HOME"
-export PATH="/usr/bin:/bin"
+/bin/mkdir -p "$TEST_HOME/bin" || { echo "FATAL: cannot create $TEST_HOME/bin" >&2; exit 2; }
+export PATH="$TEST_HOME/bin"
+export PI_BOX_NIX_DIR="$TEST_HOME/nix"
+/bin/mkdir -p "$PI_BOX_NIX_DIR" || { echo "FATAL: cannot create $PI_BOX_NIX_DIR" >&2; exit 2; }
 
-OUTPUT=$(bash "$SETUP_SH" 2>&1)
+OUTPUT=$(/bin/bash "$SETUP_SH" 2>&1)
 EXIT_CODE=$?
+export PATH="/usr/bin:/bin"
 
 assert_exit "missing devbox exits non-zero" 1 "$EXIT_CODE"
 assert_contains "missing devbox prints error" "$OUTPUT" "devbox"
@@ -323,27 +338,26 @@ fi
 trap - EXIT
 rm -rf "$TEST_HOME"
 
-# ---- test 10: setup exits early when /nix missing on Linux ----
+# ---- test 10: setup exits early when nix dir missing on Linux ----
 
 echo ""
-echo "=== test 10: setup exits early when /nix missing ==="
+echo "=== test 10: setup exits early when nix dir missing ==="
 
 setup_test_env
 trap 'rm -rf "$TEST_HOME"' EXIT
 
-# Remove the skip guard so the pre-flight actually runs
 unset PI_BOX_SKIP_NIX_CHECK
+export PI_BOX_NIX_DIR="$TEST_HOME/missing-nix"
 
 OUTPUT=$(bash "$SETUP_SH" 2>&1)
 EXIT_CODE=$?
 
-assert_exit "missing /nix exits 4" 4 "$EXIT_CODE"
-assert_contains "error mentions /nix" "$OUTPUT" "/nix"
-assert_contains "error gives sudo mkdir fix" "$OUTPUT" "sudo mkdir"
-assert_contains "error gives sudo chown fix" "$OUTPUT" "sudo chown"
+assert_exit "missing nix dir exits 4" 4 "$EXIT_CODE"
+assert_contains "error mentions nix dir" "$OUTPUT" "$PI_BOX_NIX_DIR"
+assert_contains "error suggests daemon install" "$OUTPUT" "--daemon"
+assert_contains "error mentions nix-daemon" "$OUTPUT" "nix-daemon"
 assert_contains "error says re-run" "$OUTPUT" "re-run"
 
-# Config should NOT have been written (pre-flight blocked before config write)
 GLOBAL_CONFIG="$TEST_HOME/.local/share/devbox/global/default/devbox.json"
 if [[ -f "$GLOBAL_CONFIG" ]]; then
   echo "  FAIL: devbox.json was written (should have been blocked by pre-flight)"
@@ -356,27 +370,57 @@ fi
 trap - EXIT
 rm -rf "$TEST_HOME"
 
-# ---- test 11: setup.sh source includes "not writable" error for the /nix writability check ----
+# ---- test 11: non-writable nix dir succeeds when nix-daemon is running ----
 
 echo ""
-echo "=== test 11: setup.sh has not-writable error message ==="
+echo "=== test 11: non-writable nix dir succeeds with nix-daemon ==="
 
-# Since creating a non-writable /nix requires root, verify the source code
-# contains the expected diagnostic for the "exists but not writable" case.
-SETUP_SRC=$(cat "$SETUP_SH")
-if echo "$SETUP_SRC" | grep -qF 'exists but is not writable by your user'; then
-  echo "  PASS: setup.sh contains not-writable error message"
-  PASS=$((PASS + 1))
-else
-  echo "  FAIL: setup.sh missing not-writable error message"
-  FAIL=$((FAIL + 1))
-fi
-if echo "$SETUP_SRC" | grep -qF 'sudo chown \$USER /nix'; then
-  echo "  PASS: setup.sh contains sudo chown fix for not-writable case"
-  PASS=$((PASS + 1))
-else
-  echo "  FAIL: setup.sh missing sudo chown fix"
-  FAIL=$((FAIL + 1))
-fi
+setup_test_env
+trap 'rm -rf "$TEST_HOME"' EXIT
+
+unset PI_BOX_SKIP_NIX_CHECK
+export PI_BOX_TEST_SYSTEMCTL_EXIT_CODE=0
+NONWRITABLE_DIR="$TEST_HOME/nonwritable-nix"
+mkdir -p "$NONWRITABLE_DIR" || { echo "FATAL: cannot create test dir" >&2; exit 2; }
+chmod 555 "$NONWRITABLE_DIR" || { echo "FATAL: cannot chmod test dir" >&2; exit 2; }
+export PI_BOX_NIX_DIR="$NONWRITABLE_DIR"
+
+OUTPUT=$(bash "$SETUP_SH" 2>&1)
+EXIT_CODE=$?
+
+assert_exit "non-writable nix dir with daemon exits 0" 0 "$EXIT_CODE"
+GLOBAL_CONFIG="$TEST_HOME/.local/share/devbox/global/default/devbox.json"
+assert_file_exists "config still written with daemon" "$GLOBAL_CONFIG"
+
+chmod 755 "$NONWRITABLE_DIR" 2>/dev/null || true
+trap - EXIT
+rm -rf "$TEST_HOME"
+
+# ---- test 12: non-writable nix dir fails when nix-daemon is not running ----
+
+echo ""
+echo "=== test 12: non-writable nix dir fails without nix-daemon ==="
+
+setup_test_env
+trap 'rm -rf "$TEST_HOME"' EXIT
+
+unset PI_BOX_SKIP_NIX_CHECK
+export PI_BOX_TEST_SYSTEMCTL_EXIT_CODE=1
+NONWRITABLE_DIR="$TEST_HOME/nonwritable-nix"
+mkdir -p "$NONWRITABLE_DIR" || { echo "FATAL: cannot create test dir" >&2; exit 2; }
+chmod 555 "$NONWRITABLE_DIR" || { echo "FATAL: cannot chmod test dir" >&2; exit 2; }
+export PI_BOX_NIX_DIR="$NONWRITABLE_DIR"
+
+OUTPUT=$(bash "$SETUP_SH" 2>&1)
+EXIT_CODE=$?
+
+assert_exit "non-writable nix dir without daemon exits 4" 4 "$EXIT_CODE"
+assert_contains "error mentions nix dir" "$OUTPUT" "$PI_BOX_NIX_DIR"
+assert_contains "error says not writable" "$OUTPUT" "not writable"
+assert_contains "error mentions nix-daemon" "$OUTPUT" "nix-daemon"
+
+chmod 755 "$NONWRITABLE_DIR" 2>/dev/null || true
+trap - EXIT
+rm -rf "$TEST_HOME"
 
 summary

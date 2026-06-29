@@ -1,0 +1,3 @@
+# pi-box temp/state files
+.pi-box/
+devbox.lock

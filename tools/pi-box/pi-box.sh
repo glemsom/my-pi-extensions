@@ -12,9 +12,7 @@
 # Path resolution for sourcing shared modules.
 _PI_BOX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_PI_BOX_DIR/lib/preflight.sh"
-# _die, _die -x N, and _nix_store_ok are now in lib/preflight.sh (sourced above).
 source "$_PI_BOX_DIR/lib/packages.sh"
-# Package names (PI_BOX_PI_PKG, PI_BOX_CTX7_PKG) now in lib/packages.sh.
 
 # Activate the global devbox environment. Returns 1 on failure
 # with a diagnostic message. Caller decides how to handle failure
@@ -24,6 +22,16 @@ _ensure_global_env() {
     _die "devbox global shellenv failed. Check the output above for details."
     return 1
   }
+}
+
+# Verify pi is on PATH after shellenv activation.
+# Returns 0 if found, 1 with diagnostic if not.
+_pi_must_be_installed() {
+  command -v pi &>/dev/null && return 0
+  _die "pi not found after shellenv. If devbox reported errors above (nix permission, network, etc.), those must be fixed first.
+  For nix issues: https://nixos.org/download
+  For devbox setup: https://www.jetify.com/devbox/docs/installing_devbox/"
+  return 1
 }
 
 # ---- Internal dispatch functions for pi-box modes ----
@@ -57,9 +65,7 @@ EOF
 _pi_box_dispatch_update() {
   _nix_store_ok || return 1
   _ensure_global_env || return 1
-  command -v pi &>/dev/null || { _die "pi not found after shellenv. If devbox reported errors above (nix permission, network, etc.), those must be fixed first.
-  For nix issues: https://nixos.org/download
-  For devbox setup: https://www.jetify.com/devbox/docs/installing_devbox/"; return 1; }
+  _pi_must_be_installed || return 1
   npm update -g "$PI_BOX_PI_PKG" || { _die "npm update -g $PI_BOX_PI_PKG failed.
   Check your network connection and npm registry access."; return 1; }
   pi install "npm:$PI_BOX_CTX7_PKG" || { _die "pi install npm:$PI_BOX_CTX7_PKG failed.
@@ -93,9 +99,7 @@ _pi_box_dispatch_run_global() {
   _nix_store_ok || return 1
   (
     _ensure_global_env || exit 1
-    command -v pi &>/dev/null || { _die "pi not found after shellenv. If devbox reported errors above (nix permission, network, etc.), those must be fixed first.
-  For nix issues: https://nixos.org/download
-  For devbox setup: https://www.jetify.com/devbox/docs/installing_devbox/"; exit 1; }
+    _pi_must_be_installed || exit 1
     pi "$@"
   )
 }

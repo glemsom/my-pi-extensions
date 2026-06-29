@@ -3,10 +3,21 @@
 # Sourced by pi-box.sh and setup.sh.
 # Provides _die (consistent error output) and _nix_store_ok (Nix store validation).
 
-# Print an error message to stderr and return 1.
+# Print an error message to stderr.
+# Usage:
+#   _die "message"         # prints message, returns 1
+#   _die -x N "message"    # prints message, exits with code N
 # Caller decides whether to exit or return on failure.
 _die() {
-  echo "Error: $1" >&2
+  local _pi_exit_code=0
+  if [[ "${1:-}" == "-x" && -n "${2:-}" && "$2" =~ ^[0-9]+$ ]]; then
+    _pi_exit_code="$2"
+    shift 2
+  fi
+  echo "Error: $*" >&2
+  if [[ "$_pi_exit_code" -gt 0 ]]; then
+    exit "$_pi_exit_code"
+  fi
   return 1
 }
 

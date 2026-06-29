@@ -2,15 +2,18 @@
 # setup.sh — configure the pi-box base environment
 set -u
 
-# Pre-flight: devbox must be installed
+# Pre-flight: devbox must be installed (before sourcing lib scripts,
+# since those depend on SCRIPT_DIR resolution).
 if ! command -v devbox &>/dev/null; then
   echo "Error: devbox is not installed. Please install devbox first: https://www.jetify.com/devbox/docs/installing_devbox/"
   exit 1
 fi
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+source "$SCRIPT_DIR/lib/preflight.sh"
 source "$SCRIPT_DIR/lib/packages.sh"
 # Package names (PI_BOX_PI_PKG, PI_BOX_CTX7_PKG) now in lib/packages.sh.
+
 GLOBAL_CONFIG="$HOME/.local/share/devbox/global/default/devbox.json"
 
 
@@ -27,15 +30,14 @@ fi
 if $ALREADY_CONFIGURED; then
   echo "nothing to do"
 else
-  source "$SCRIPT_DIR/lib/preflight.sh"
   _nix_store_ok || exit 4
 
   # Create directories
-  mkdir -p "$(dirname "$GLOBAL_CONFIG")" || { echo "Error: cannot create directory $(dirname "$GLOBAL_CONFIG")"; exit 2; }
-  mkdir -p "$HOME/.pi-box/npm" || { echo "Error: cannot create directory $HOME/.pi-box/npm"; exit 2; }
+  mkdir -p "$(dirname "$GLOBAL_CONFIG")" || _die -x 2 "cannot create directory $(dirname "$GLOBAL_CONFIG")"
+  mkdir -p "$HOME/.pi-box/npm" || _die -x 2 "cannot create directory $HOME/.pi-box/npm"
 
   # Write canonical base box config
-  cat > "$GLOBAL_CONFIG" << DEVENDOF || { echo "Error: cannot write $GLOBAL_CONFIG"; exit 3; }
+  cat > "$GLOBAL_CONFIG" << DEVENDOF || _die -x 3 "cannot write $GLOBAL_CONFIG"
 {
   "packages": [
     "nodejs@26"

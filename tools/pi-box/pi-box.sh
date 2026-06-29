@@ -12,7 +12,7 @@
 # Path resolution for sourcing shared modules.
 _PI_BOX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_PI_BOX_DIR/lib/preflight.sh"
-# _die and _nix_store_ok are now in lib/preflight.sh (sourced above).
+# _die, _die -x N, and _nix_store_ok are now in lib/preflight.sh (sourced above).
 source "$_PI_BOX_DIR/lib/packages.sh"
 # Package names (PI_BOX_PI_PKG, PI_BOX_CTX7_PKG) now in lib/packages.sh.
 
@@ -26,10 +26,12 @@ _ensure_global_env() {
   }
 }
 
-pi-box() {
-  # --help flag: print usage and exit.
-  if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    cat <<'EOF'
+# ---- Internal dispatch functions for pi-box modes ----
+# Each function handles one mode. Called by the thin pi-box() dispatcher below.
+
+# Print usage and exit cleanly.
+_pi_box_dispatch_help() {
+  cat <<'EOF'
 Usage: pi-box [FLAG] [--] [PI-ARGS...]
 
   (no flag)     Activate the devbox environment and run Pi.
@@ -47,49 +49,47 @@ Environment:
   PI_BOX_SKIP_NIX_CHECK=1   Bypass the /nix store pre-flight check
                             (useful for tests or non-Linux systems).
 EOF
-    return 0
-  fi
+}
 
-  # --update flag: refresh Pi and extensions to latest versions.
-  # Works in both project and no-project contexts.
-  if [[ "${1:-}" == "--update" ]]; then
-    _nix_store_ok || return 1
-    _ensure_global_env || return 1
-    command -v pi &>/dev/null || { _die "pi not found after shellenv. If devbox reported errors above (nix permission, network, etc.), those must be fixed first.
+# Refresh Pi and default extensions to latest versions.
+# Intercepted before project detection so it works globally even
+# when a project devbox.json is present.
+_pi_box_dispatch_update() {
+  _nix_store_ok || return 1
+  _ensure_global_env || return 1
+  command -v pi &>/dev/null || { _die "pi not found after shellenv. If devbox reported errors above (nix permission, network, etc.), those must be fixed first.
   For nix issues: https://nixos.org/download
   For devbox setup: https://www.jetify.com/devbox/docs/installing_devbox/"; return 1; }
-    npm update -g "$PI_BOX_PI_PKG" || { _die "npm update -g $PI_BOX_PI_PKG failed.
+  npm update -g "$PI_BOX_PI_PKG" || { _die "npm update -g $PI_BOX_PI_PKG failed.
   Check your network connection and npm registry access."; return 1; }
-    pi install "npm:$PI_BOX_CTX7_PKG" || { _die "pi install npm:$PI_BOX_CTX7_PKG failed.
+  pi install "npm:$PI_BOX_CTX7_PKG" || { _die "pi install npm:$PI_BOX_CTX7_PKG failed.
   Check your network connection and that the pi binary is working (run: pi --version)."; return 1; }
-    return
-  fi
+}
 
-  # Project devbox.json detection: when a project-level devbox.json exists,
-  # use devbox shell to enter the project environment (which layers on top
-  # of the global base box) and run Pi inside it.
-  if [[ -f ./devbox.json ]]; then
-    _nix_store_ok || return 1
-    if [[ "${1:-}" == "--shell" ]]; then
-      devbox shell || { _die "devbox shell failed to enter the project environment. Check the output above for details."; return 1; }
-      return
-    fi
-    devbox shell -- pi "$@" || { _die "devbox shell failed to launch pi in the project environment. Check the output above for details."; return 1; }
-    return
-  fi
+# Enter an interactive devbox shell for the project environment.
+_pi_box_dispatch_shell_project() {
+  _nix_store_ok || return 1
+  devbox shell || { _die "devbox shell failed to enter the project environment. Check the output above for details."; return 1; }
+}
 
-  # --shell flag (no-project): activate global environment, drop into interactive shell.
-  # eval runs in the current shell (not a subshell), so the devbox environment
-  # (PATH, shell functions, completions from the init-hook) persists after return.
-  if [[ "${1:-}" == "--shell" ]]; then
-    _nix_store_ok || return 1
-    _ensure_global_env || return 1
-    echo "pi-box: devbox global environment activated. Run 'pi' to start the agent."
-    return 0
-  fi
+# Run Pi inside the project devbox environment (project environment layers
+# on top of the global base box).
+_pi_box_dispatch_run_project() {
+  _nix_store_ok || return 1
+  devbox shell -- pi "$@" || { _die "devbox shell failed to launch pi in the project environment. Check the output above for details."; return 1; }
+}
 
-  # No project devbox.json: activate global environment and run Pi.
-  # Run in a subshell so devbox PATH changes don't leak into the parent shell.
+# Activate the global devbox environment in-place (no subshell) and
+# drop into an interactive shell. PATH changes persist after return.
+_pi_box_dispatch_shell_global() {
+  _nix_store_ok || return 1
+  _ensure_global_env || return 1
+  echo "pi-box: devbox global environment activated. Run 'pi' to start the agent."
+}
+
+# Run Pi in the global devbox environment.
+# Runs in a subshell so devbox PATH changes don't leak to the parent shell.
+_pi_box_dispatch_run_global() {
   _nix_store_ok || return 1
   (
     _ensure_global_env || exit 1
@@ -98,4 +98,41 @@ EOF
   For devbox setup: https://www.jetify.com/devbox/docs/installing_devbox/"; exit 1; }
     pi "$@"
   )
+}
+
+# ---- Public interface ----
+# Thin dispatcher: parse the first flag and delegate to the appropriate
+# internal dispatch function.
+pi-box() {
+  # --help: intercept, ignore remaining args.
+  if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    _pi_box_dispatch_help
+    return 0
+  fi
+
+  # --update: always intercept before project check so updates work globally.
+  if [[ "${1:-}" == "--update" ]]; then
+    _pi_box_dispatch_update
+    return $?
+  fi
+
+  # Project devbox.json detection: when ./devbox.json exists the caller
+  # wants the project environment (with Pi on top).
+  if [[ -f ./devbox.json ]]; then
+    if [[ "${1:-}" == "--shell" ]]; then
+      _pi_box_dispatch_shell_project
+      return $?
+    fi
+    _pi_box_dispatch_run_project "$@"
+    return $?
+  fi
+
+  # --shell (no project devbox.json): activate global env interactively.
+  if [[ "${1:-}" == "--shell" ]]; then
+    _pi_box_dispatch_shell_global
+    return $?
+  fi
+
+  # Default: run Pi in the global devbox environment.
+  _pi_box_dispatch_run_global "$@"
 }

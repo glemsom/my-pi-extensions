@@ -76,6 +76,20 @@ EXIT_CODE=$?
 assert_exit "_die returns 1" 1 "$EXIT_CODE"
 assert_contains "_die prints error prefix" "$OUTPUT" "Error: some error"
 
+# ---- test 1b: _die -x N exits with specified code ----
+
+echo ""
+echo "=== test 1b: _die -x N exits with specified code ==="
+
+source "$PREFLIGHT_SH"
+
+# Run in subshell so exit doesn't kill the test harness
+OUTPUT=$(_die -x 42 "fatal error" 2>&1)
+EXIT_CODE=$?
+
+assert_exit "_die -x 42 exits 42" 42 "$EXIT_CODE"
+assert_contains "_die -x prints error prefix" "$OUTPUT" "Error: fatal error"
+
 # ---- test 2: _nix_store_ok returns 0 when nix dir exists and writable ----
 
 echo ""

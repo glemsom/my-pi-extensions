@@ -11,7 +11,7 @@ fi
 # Extract package definitions from pi-box.sh (single source of truth).
 # Uses grep+eval to import only the variable assignments, not the functions.
 _PI_BOX_SH="$(dirname "$(readlink -f "$0")")/pi-box.sh"
-eval "$(grep '^PI_BOX_PI_PKG=\|^PI_BOX_CTX7_PKG=\|^PI_BOX_MYLOOK_PKG=' "$_PI_BOX_SH")" || { echo "Error: cannot read package definitions from pi-box.sh"; exit 5; }
+eval "$(grep '^PI_BOX_PI_PKG=\|^PI_BOX_CTX7_PKG=' "$_PI_BOX_SH)" || { echo "Error: cannot read package definitions from pi-box.sh"; exit 5; }
 
 GLOBAL_CONFIG="$HOME/.local/share/devbox/global/default/devbox.json"
 NIX_DIR="${PI_BOX_NIX_DIR:-/nix}"
@@ -67,7 +67,7 @@ else
   },
   "shell": {
     "init_hook": [
-      "command -v pi || (npm install -g ${PI_BOX_PI_PKG} && pi install npm:${PI_BOX_CTX7_PKG} && pi install npm:${PI_BOX_MYLOOK_PKG})"
+      "command -v pi || (npm install -g ${PI_BOX_PI_PKG} && pi install npm:${PI_BOX_CTX7_PKG})"
     ]
   }
 }

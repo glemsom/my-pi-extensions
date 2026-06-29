@@ -10,11 +10,12 @@ fi
 
 # Extract package definitions from pi-box.sh (single source of truth).
 # Uses grep+eval to import only the variable assignments, not the functions.
-_PI_BOX_SH="$(dirname "$(readlink -f "$0")")/pi-box.sh"
-eval "$(grep '^PI_BOX_PI_PKG=\|^PI_BOX_CTX7_PKG=' "$_PI_BOX_SH)" || { echo "Error: cannot read package definitions from pi-box.sh"; exit 5; }
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+_PI_BOX_SH="$SCRIPT_DIR/pi-box.sh"
+eval "$(grep '^PI_BOX_PI_PKG=\|^PI_BOX_CTX7_PKG=' "$_PI_BOX_SH")" || { echo "Error: cannot read package definitions from pi-box.sh"; exit 5; }
 
 GLOBAL_CONFIG="$HOME/.local/share/devbox/global/default/devbox.json"
-NIX_DIR="${PI_BOX_NIX_DIR:-/nix}"
+
 
 ALREADY_CONFIGURED=false
 # Check if already configured (idempotency)
@@ -29,27 +30,8 @@ fi
 if $ALREADY_CONFIGURED; then
   echo "nothing to do"
 else
-  # Pre-flight: check Nix store is usable on Linux before configuring.
-  # Set PI_BOX_SKIP_NIX_CHECK=1 to bypass (used by tests).
-  if [[ "$(uname -s)" == "Linux" ]] && [[ "${PI_BOX_SKIP_NIX_CHECK:-}" != "1" ]]; then
-    if ! test -d "$NIX_DIR" 2>/dev/null; then
-      echo "Error: $NIX_DIR directory not found. Nix is not installed or its store is missing." >&2
-      echo "  To install Nix with multi-user support (recommended), run:" >&2
-      echo "    sh <(curl -L https://nixos.org/nix/install) --daemon" >&2
-      echo "  Then start and enable the nix-daemon:" >&2
-      echo "    sudo systemctl enable nix-daemon && sudo systemctl start nix-daemon" >&2
-      echo "  Then re-run setup.sh." >&2
-      exit 4
-    elif ! test -w "$NIX_DIR" 2>/dev/null; then
-      if ! systemctl is-active --quiet nix-daemon; then
-        echo "Error: $NIX_DIR exists but is not writable, and nix-daemon is not active or systemctl is unavailable." >&2
-        echo "  Devbox/Nix on Linux requires the nix-daemon for multi-user setups." >&2
-        echo "  Fix:  sudo systemctl enable nix-daemon && sudo systemctl start nix-daemon" >&2
-        echo "  Then re-run setup.sh." >&2
-        exit 4
-      fi
-    fi
-  fi
+  source "$SCRIPT_DIR/lib/preflight.sh"
+  _nix_store_ok || exit 4
 
   # Create directories
   mkdir -p "$(dirname "$GLOBAL_CONFIG")" || { echo "Error: cannot create directory $(dirname "$GLOBAL_CONFIG")"; exit 2; }

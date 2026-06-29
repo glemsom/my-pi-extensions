@@ -14,39 +14,19 @@
 PI_BOX_PI_PKG="@earendil-works/pi-coding-agent"
 PI_BOX_CTX7_PKG="@dreki-gg/pi-context7"
 
-_die() {
-  echo "Error: $1" >&2
-  return 1
-}
+# Path resolution for sourcing shared modules.
+_PI_BOX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$_PI_BOX_DIR/lib/preflight.sh"
+# _die and _nix_store_ok are now in lib/preflight.sh (sourced above).
 
-_nix_store_ok() {
-  local nix_dir="${1:-${PI_BOX_NIX_DIR:-/nix}}"
-  [[ "${PI_BOX_SKIP_NIX_CHECK:-}" == "1" ]] && return 0
-  [[ "$(uname -s)" != "Linux" ]] && return 0
-
-  if ! test -d "$nix_dir" 2>/dev/null; then
-    _die "$nix_dir directory not found. Nix is not installed or its store is missing.
-  To install Nix with multi-user support (recommended), run:
-    sh <(curl -L https://nixos.org/nix/install) --daemon
-  Then start and enable the nix-daemon:
-    sudo systemctl enable nix-daemon && sudo systemctl start nix-daemon
-  Then re-run your command." || return 1
-  fi
-
-  if ! test -w "$nix_dir" 2>/dev/null; then
-    # /nix exists but is not writable — check if nix-daemon is active.
-    if ! systemctl is-active --quiet nix-daemon; then
-      _die "$nix_dir exists but is not writable, and nix-daemon is not active or systemctl is unavailable.
-  Devbox/Nix on Linux requires the nix-daemon to be active.
-  Fix:  sudo systemctl enable nix-daemon && sudo systemctl start nix-daemon
-  Then re-run your command." || return 1
-    fi
-    # daemon is running (so it should handle store access), but /nix is still
-    # not writable by the user — this is expected for a healthy multi-user setup.
-    :
-  fi
-
-  return 0
+# Activate the global devbox environment. Returns 1 on failure
+# with a diagnostic message. Caller decides how to handle failure
+# (return vs exit) — used both from the main shell and a subshell.
+_ensure_global_env() {
+  eval "$(devbox global shellenv --init-hook --recompute)" || {
+    _die "devbox global shellenv failed. Check the output above for details."
+    return 1
+  }
 }
 
 pi-box() {
@@ -77,7 +57,7 @@ EOF
   # Works in both project and no-project contexts.
   if [[ "${1:-}" == "--update" ]]; then
     _nix_store_ok || return 1
-    eval "$(devbox global shellenv --init-hook --recompute)" || { _die "devbox global shellenv failed. Check the output above for details."; return 1; }
+    _ensure_global_env || return 1
     command -v pi &>/dev/null || { _die "pi not found after shellenv. If devbox reported errors above (nix permission, network, etc.), those must be fixed first.
   For nix issues: https://nixos.org/download
   For devbox setup: https://www.jetify.com/devbox/docs/installing_devbox/"; return 1; }
@@ -106,7 +86,7 @@ EOF
   # (PATH, shell functions, completions from the init-hook) persists after return.
   if [[ "${1:-}" == "--shell" ]]; then
     _nix_store_ok || return 1
-    eval "$(devbox global shellenv --init-hook --recompute)" || { _die "devbox global shellenv failed. Check the output above for details."; return 1; }
+    _ensure_global_env || return 1
     echo "pi-box: devbox global environment activated. Run 'pi' to start the agent."
     return 0
   fi
@@ -115,7 +95,7 @@ EOF
   # Run in a subshell so devbox PATH changes don't leak into the parent shell.
   _nix_store_ok || return 1
   (
-    eval "$(devbox global shellenv --init-hook --recompute)" || { _die "devbox global shellenv failed. Check the output above for details."; exit 1; }
+    _ensure_global_env || exit 1
     command -v pi &>/dev/null || { _die "pi not found after shellenv. If devbox reported errors above (nix permission, network, etc.), those must be fixed first.
   For nix issues: https://nixos.org/download
   For devbox setup: https://www.jetify.com/devbox/docs/installing_devbox/"; exit 1; }

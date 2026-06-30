@@ -33,6 +33,9 @@ import {
   type ReadToolDetails,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 // ─── TOOL UI CONFIG ─────────────────────────────────────────────────────────
 // Open lookup architecture for tool styling. Any tool name can be added here
@@ -112,6 +115,86 @@ const DEFAULT_TOOL_CONFIG: ToolUIConfig = {
 function getToolConfig(toolName: string): ToolUIConfig {
   return TOOL_UI_CONFIG[toolName] ?? DEFAULT_TOOL_CONFIG;
 }
+
+// ─── USER TOOL CONFIG (external JSON) ────────────────────────────────────────
+// Users can override/add tool icons without editing this file by placing a
+// config at $XDG_CONFIG_HOME/pi-my-look/config.json (or
+// ~/.config/pi-my-look/config.json). Read once at module load; silent fallback
+// if missing/unreadable/invalid (built-in map unchanged).
+//
+// Shape:
+//   {
+//     "tools":   { "my_tool": { "icon": "🎨", "color": "accent" } },
+//     "default": { "icon": "🔧", "color": "accent" }
+//   }
+// "tools" entries are merged INTO TOOL_UI_CONFIG (user wins on conflict).
+// "default" overrides DEFAULT_TOOL_CONFIG. Entries with a non-string icon or
+// color are skipped (lenient — never throws).
+
+interface UserToolConfig {
+  tools?: Record<string, { icon: unknown; color: unknown }>;
+  default?: { icon: unknown; color: unknown };
+}
+
+function resolveConfigPath(): string | null {
+  // XDG_CONFIG_HOME if set and absolute, else ~/.config
+  const xdg = process.env.XDG_CONFIG_HOME;
+  const base = xdg && xdg.startsWith("/") ? xdg : join(homedir(), ".config");
+  return join(base, "pi-my-look", "config.json");
+}
+
+function isValidEntry(entry: unknown): entry is ToolUIConfig {
+  return (
+    !!entry &&
+    typeof entry === "object" &&
+    typeof (entry as { icon?: unknown }).icon === "string" &&
+    typeof (entry as { color?: unknown }).color === "string"
+  );
+}
+
+/** Merge a validated user config into the built-in maps (mutates). Returns the
+ *  number of accepted tool entries (for diagnostics). Pure given (base, default, external). */
+function applyUserConfig(
+  base: Record<string, ToolUIConfig>,
+  fallback: ToolUIConfig,
+  external: UserToolConfig,
+): number {
+  let accepted = 0;
+  if (external.tools) {
+    for (const [name, raw] of Object.entries(external.tools)) {
+      if (isValidEntry(raw)) {
+        base[name] = { icon: raw.icon, color: raw.color as ThemeColor };
+        accepted++;
+      }
+    }
+  }
+  if (external.default && isValidEntry(external.default)) {
+    fallback.icon = external.default.icon;
+    fallback.color = external.default.color as ThemeColor;
+  }
+  return accepted;
+}
+
+function loadUserToolConfig(): void {
+  const path = resolveConfigPath();
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return; // missing or unreadable → keep built-ins (silent)
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    console.warn(`[pi-my-look] ignoring invalid JSON in ${path}: ${(err as Error).message}`);
+    return;
+  }
+  if (!parsed || typeof parsed !== "object") return;
+  applyUserConfig(TOOL_UI_CONFIG, DEFAULT_TOOL_CONFIG, parsed as UserToolConfig);
+}
+
+loadUserToolConfig();
 
 // Tools with specialized renderCall/renderResult (custom behavior beyond generic)
 const CUSTOM_RENDERED_TOOLS = new Set(["read", "edit", "bash"]);
